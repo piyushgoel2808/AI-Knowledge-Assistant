@@ -1,0 +1,25 @@
+# docker-compose.yml
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    volumes:
+      # This maps your local data folder so ChromaDB storage persists
+      - ./data:/app/data
+    env_file:
+      - .env
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "5173:5173"
+    # This ensures your frontend container can talk to the backend container
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend

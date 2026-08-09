@@ -1,0 +1,21 @@
+# Dockerfile.backend
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Copy requirements and install dependencies
+COPY requirements.txt .
+
+# Use BuildKit cache to save downloaded .whl files across builds
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --default-timeout=100 -r requirements.txt
+
+# Copy the application code
+COPY backend/ ./backend/
+COPY core/ ./core/
+
+# Expose the FastAPI port
+EXPOSE 8000
+
+# Run the server (0.0.0.0 allows external access to the container)
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
