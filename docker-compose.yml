@@ -7,10 +7,21 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # This maps your local data folder so ChromaDB storage persists
+      # Persist ChromaDB, uploads, and HuggingFace model cache on host
       - ./data:/app/data
+      # Live code sync for instant local updates on macOS without image rebuilds
+      - ./backend:/app/backend
+      - ./core:/app/core
+      - ./Sample_doc:/app/Sample_doc:ro
     env_file:
       - .env
+    environment:
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - HF_HOME=/app/data/hf_cache
+      - TOKENIZERS_PARALLELISM=false
+      - OMP_NUM_THREADS=4
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   frontend:
     build:
@@ -18,7 +29,10 @@ services:
       dockerfile: Dockerfile.frontend
     ports:
       - "5173:5173"
-    # This ensures your frontend container can talk to the backend container
+    volumes:
+      # Live HMR sync for frontend development on macOS
+      - ./frontend/src:/app/src
+      - ./frontend/index.html:/app/index.html
     environment:
       - VITE_API_URL=http://localhost:8000
     depends_on:

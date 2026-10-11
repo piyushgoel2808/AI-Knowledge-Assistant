@@ -13,6 +13,7 @@ __pycache__/
 chroma/
 data/chroma/
 data/uploads/
+data/hf_cache/
 *.docx
 ~$*
 frontend/node_modules/

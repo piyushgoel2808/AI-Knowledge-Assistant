@@ -3,6 +3,11 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
+# Install Tesseract OCR for scanned PDF fallback in core/ingestion.py
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy requirements and install dependencies
 COPY requirements.txt .
 
@@ -10,12 +15,13 @@ COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --default-timeout=100 -r requirements.txt
 
-# Copy the application code
+# Copy the application code and bundled sample documents
 COPY backend/ ./backend/
 COPY core/ ./core/
+COPY Sample_doc/ ./Sample_doc/
 
 # Expose the FastAPI port
 EXPOSE 8000
 
 # Run the server (0.0.0.0 allows external access to the container)
-CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

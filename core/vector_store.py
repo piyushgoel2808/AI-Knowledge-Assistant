@@ -1,10 +1,12 @@
-"""Persistent ChromaDB helpers for storing and retrieving chunks."""
+"""Persistent ChromaDB helpers for storing, listing, and retrieving document chunks."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
+import hashlib
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 import chromadb
 from chromadb.api.models.Collection import Collection
@@ -37,8 +39,14 @@ def _ensure_persist_dir(config: AppConfig) -> Path:
     return config.chroma_persist_dir
 
 
+@lru_cache(maxsize=1)
 def _get_embedding_function() -> SentenceTransformerEmbeddingFunction:
     return SentenceTransformerEmbeddingFunction(model_name=DEFAULT_EMBEDDING_MODEL)
+
+
+@lru_cache(maxsize=4)
+def _get_cached_client(persist_path: str) -> chromadb.PersistentClient:
+    return chromadb.PersistentClient(path=persist_path)
 
 
 def get_client(config: AppConfig | None = None) -> chromadb.PersistentClient:
@@ -46,7 +54,7 @@ def get_client(config: AppConfig | None = None) -> chromadb.PersistentClient:
 
     resolved_config = _resolve_config(config)
     persist_dir = _ensure_persist_dir(resolved_config)
-    return chromadb.PersistentClient(path=str(persist_dir))
+    return _get_cached_client(str(persist_dir.resolve()))
 
 
 def get_collection(
@@ -68,12 +76,25 @@ def add_documents(
     collection_name: str = DEFAULT_COLLECTION_NAME,
     config: AppConfig | None = None,
 ) -> list[str]:
-    """Upsert LangChain documents into the persistent Chroma collection."""
+    """Upsert LangChain documents into the persistent Chroma collection, replacing prior chunks of re-uploaded files."""
 
     if not documents:
         return []
 
     collection = get_collection(collection_name=collection_name, config=config)
+
+    # Deduplicate by deleting prior chunks belonging to any file being re-uploaded
+    sources_in_batch = {
+        str(doc.metadata.get("source"))
+        for doc in documents
+        if doc.metadata and doc.metadata.get("source")
+    }
+    for source_name in sources_in_batch:
+        try:
+            collection.delete(where={"source": source_name})
+        except Exception:
+            pass
+
     ids: list[str] = []
     texts: list[str] = []
     metadatas: list[dict[str, object]] = []
@@ -90,16 +111,21 @@ def add_documents(
 
 def search_documents(
     query: str,
-    top_k: int = 4,
+    top_k: int = 5,
     collection_name: str = DEFAULT_COLLECTION_NAME,
     config: AppConfig | None = None,
 ) -> list[RetrievedChunk]:
     """Retrieve the most relevant chunks for a user query."""
 
     collection = get_collection(collection_name=collection_name, config=config)
+    total = collection.count()
+    if total == 0:
+        return []
+
+    effective_k = max(1, min(top_k, total))
     result = collection.query(
         query_texts=[query],
-        n_results=top_k,
+        n_results=effective_k,
         include=["documents", "metadatas", "distances"],
     )
 
@@ -132,6 +158,79 @@ def count_documents(collection_name: str = DEFAULT_COLLECTION_NAME, config: AppC
     return collection.count()
 
 
+def list_indexed_documents(
+    collection_name: str = DEFAULT_COLLECTION_NAME,
+    config: AppConfig | None = None,
+) -> list[dict[str, Any]]:
+    """Return a summary list of all unique documents currently indexed in ChromaDB."""
+
+    collection = get_collection(collection_name=collection_name, config=config)
+    total = collection.count()
+    if total == 0:
+        return []
+
+    records = collection.get(include=["metadatas"])
+    metadatas = records.get("metadatas") or []
+
+    by_source: dict[str, dict[str, Any]] = {}
+    for meta in metadatas:
+        if not meta:
+            continue
+        source = str(meta.get("source", "unknown"))
+        entry = by_source.setdefault(
+            source,
+            {
+                "source": source,
+                "source_type": str(meta.get("source_type", "document")).upper(),
+                "chunks": 0,
+                "pages": set(),
+                "sections": set(),
+                "total_words": 0,
+            },
+        )
+        entry["chunks"] += 1
+        page = meta.get("page")
+        if isinstance(page, int):
+            entry["pages"].add(page)
+        section = meta.get("section")
+        if isinstance(section, str) and section.strip():
+            entry["sections"].add(section.strip())
+        words = meta.get("word_count")
+        if isinstance(words, int):
+            entry["total_words"] += words
+
+    summaries: list[dict[str, Any]] = []
+    for source in sorted(by_source.keys()):
+        item = by_source[source]
+        summaries.append(
+            {
+                "source": item["source"],
+                "source_type": item["source_type"],
+                "chunks": item["chunks"],
+                "page_count": len(item["pages"]) if item["pages"] else None,
+                "section_count": len(item["sections"]),
+                "total_words": item["total_words"],
+            }
+        )
+    return summaries
+
+
+def delete_document(
+    source_name: str,
+    collection_name: str = DEFAULT_COLLECTION_NAME,
+    config: AppConfig | None = None,
+) -> int:
+    """Delete all chunks belonging to a specific source document."""
+
+    collection = get_collection(collection_name=collection_name, config=config)
+    before = collection.count()
+    if before == 0:
+        return 0
+    collection.delete(where={"source": source_name})
+    after = collection.count()
+    return max(0, before - after)
+
+
 def clear_collection(collection_name: str = DEFAULT_COLLECTION_NAME, config: AppConfig | None = None) -> None:
     """Delete the collection and recreate it empty."""
 
@@ -152,7 +251,8 @@ def _build_chunk_id(document: Document, index: int) -> str:
     source = str(metadata.get("source", "document"))
     page = metadata.get("page", "na")
     chunk_index = metadata.get("chunk_index", index)
-    return f"{source}:{page}:{chunk_index}:{index}"
+    digest = hashlib.sha1(document.page_content.encode("utf-8", errors="ignore")).hexdigest()[:8]
+    return f"{source}:{page}:{chunk_index}:{index}:{digest}"
 
 
 def _build_fallback_id(index: int) -> str:
