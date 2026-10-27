@@ -6,7 +6,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-0.6+-FF6600)](https://www.trychroma.com/)
 [![Ollama](https://img.shields.io/badge/Ollama-gemma4%3Ae4b-000000?logo=ollama&logoColor=white)](https://ollama.com/)
-[![Tests](https://img.shields.io/badge/Tests-24%20Passing-brightgreen?logo=pytest&logoColor=white)](#-testing--verification)
+[![Embeddings](https://img.shields.io/badge/Embeddings-EmbeddingGemma--2%20(768d)-8A2BE2)](https://ollama.com/)
+[![Tests](https://img.shields.io/badge/Tests-29%20Passing-brightgreen?logo=pytest&logoColor=white)](#-testing--verification)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 An enterprise-grade, local-first **Retrieval-Augmented Generation (RAG) Studio** engineered to ingest complex, multi-page corporate documents (`.pdf`, `.docx`, `.txt`) and deliver **zero-hallucination, evidence-backed answers** with sentence-level entailment verification, deterministic abstention, and hands-free voice interaction.

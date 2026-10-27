@@ -5,21 +5,92 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 import hashlib
+import logging
 from pathlib import Path
 from typing import Any, Sequence
 
 import chromadb
 from chromadb.api.models.Collection import Collection
+from chromadb.api.types import Documents, EmbeddingFunction, Embeddings
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+import httpx
 from langchain_core.documents import Document
 
 from core.config import AppConfig, load_config
 from core.hierarchical_chunker import ParentDocStore
 from core.hybrid_search import bm25_index, reciprocal_rank_fusion
 
+logger = logging.getLogger(__name__)
 
 DEFAULT_COLLECTION_NAME = "ai_knowledge_assistant"
 DEFAULT_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
+
+
+class OllamaEmbeddingFunction(EmbeddingFunction[Documents]):
+    """Chroma-compatible embedding function delegating to Ollama `/api/embed`."""
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:11434",
+        model_name: str = "embeddinggemma-2",
+        timeout: float = 60.0,
+    ) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.model_name = model_name
+        self.timeout = timeout
+
+    def __call__(self, input: Documents) -> Embeddings:
+        if not input:
+            return []
+
+        url = f"{self.base_url}/api/embed"
+        try:
+            with httpx.Client(timeout=self.timeout) as client:
+                resp = client.post(url, json={"model": self.model_name, "input": list(input)})
+                resp.raise_for_status()
+                data = resp.json()
+                embeddings = data.get("embeddings")
+                if embeddings:
+                    return embeddings
+        except Exception as exc:
+            logger.warning(
+                "Ollama /api/embed request failed for model '%s' at %s: %s. Trying single-prompt fallback...",
+                self.model_name,
+                url,
+                exc,
+            )
+            embeddings = []
+            with httpx.Client(timeout=self.timeout) as client:
+                for text in input:
+                    fallback_resp = client.post(
+                        f"{self.base_url}/api/embeddings",
+                        json={"model": self.model_name, "prompt": text},
+                    )
+                    fallback_resp.raise_for_status()
+                    embeddings.append(fallback_resp.json()["embedding"])
+            return embeddings
+
+    @staticmethod
+    def name() -> str:
+        return "ollama"
+
+    def default_space(self) -> str:
+        return "cosine"
+
+    def get_config(self) -> dict[str, Any]:
+        return {
+            "base_url": self.base_url,
+            "model_name": self.model_name,
+            "timeout": self.timeout,
+        }
+
+    @staticmethod
+    def build_from_config(config: dict[str, Any]) -> OllamaEmbeddingFunction:
+        return OllamaEmbeddingFunction(
+            base_url=config.get("base_url", "http://localhost:11434"),
+            model_name=config.get("model_name", "embeddinggemma-2"),
+            timeout=float(config.get("timeout", 60.0)),
+        )
 
 
 @dataclass(frozen=True)
@@ -43,9 +114,36 @@ def _ensure_persist_dir(config: AppConfig) -> Path:
     return config.chroma_persist_dir
 
 
-@lru_cache(maxsize=1)
-def _get_embedding_function() -> SentenceTransformerEmbeddingFunction:
-    return SentenceTransformerEmbeddingFunction(model_name=DEFAULT_EMBEDDING_MODEL)
+@lru_cache(maxsize=4)
+def _get_sentence_transformer_ef(model_name: str) -> SentenceTransformerEmbeddingFunction:
+    return SentenceTransformerEmbeddingFunction(model_name=model_name)
+
+
+def get_embedding_function(config: AppConfig | None = None) -> Any:
+    """Return an embedding function based on configuration (Ollama or SentenceTransformers)."""
+    cfg = _resolve_config(config)
+    provider = cfg.embedding_provider.lower()
+    if provider == "ollama":
+        return OllamaEmbeddingFunction(
+            base_url=cfg.ollama_base_url,
+            model_name=cfg.embedding_model,
+        )
+    return _get_sentence_transformer_ef(cfg.embedding_model or DEFAULT_EMBEDDING_MODEL)
+
+
+def get_default_collection_name(config: AppConfig | None = None) -> str:
+    """Generate a model-specific collection name to avoid vector dimension collisions."""
+    cfg = _resolve_config(config)
+    if cfg.chroma_collection_name:
+        return cfg.chroma_collection_name
+    safe_model = (
+        cfg.embedding_model.lower()
+        .replace(":", "_")
+        .replace("-", "_")
+        .replace("/", "_")
+        .replace(".", "_")
+    )
+    return f"ai_knowledge_{safe_model}"
 
 
 @lru_cache(maxsize=4)
@@ -62,22 +160,24 @@ def get_client(config: AppConfig | None = None) -> chromadb.PersistentClient:
 
 
 def get_collection(
-    collection_name: str = DEFAULT_COLLECTION_NAME,
+    collection_name: str | None = None,
     config: AppConfig | None = None,
 ) -> Collection:
     """Return the persistent collection used for document chunks."""
 
-    client = get_client(config)
+    resolved_config = _resolve_config(config)
+    name = collection_name or get_default_collection_name(resolved_config)
+    client = get_client(resolved_config)
     return client.get_or_create_collection(
-        name=collection_name,
-        embedding_function=_get_embedding_function(),
+        name=name,
+        embedding_function=get_embedding_function(resolved_config),
         metadata={"hnsw:space": "cosine"},
     )
 
 
 def add_documents(
     documents: Sequence[Document],
-    collection_name: str = DEFAULT_COLLECTION_NAME,
+    collection_name: str | None = None,
     config: AppConfig | None = None,
 ) -> list[str]:
     """Upsert LangChain documents into the persistent Chroma collection, replacing prior chunks of re-uploaded files."""
@@ -133,7 +233,7 @@ def add_documents(
 def search_documents(
     query: str,
     top_k: int = 5,
-    collection_name: str = DEFAULT_COLLECTION_NAME,
+    collection_name: str | None = None,
     config: AppConfig | None = None,
 ) -> list[RetrievedChunk]:
     """Retrieve the most relevant chunks using Hybrid Search (Dense Vector + BM25) with RRF."""
@@ -227,7 +327,7 @@ def search_documents(
     return chunks
 
 
-def count_documents(collection_name: str = DEFAULT_COLLECTION_NAME, config: AppConfig | None = None) -> int:
+def count_documents(collection_name: str | None = None, config: AppConfig | None = None) -> int:
     """Return the number of stored chunks in the collection."""
 
     collection = get_collection(collection_name=collection_name, config=config)
@@ -235,7 +335,7 @@ def count_documents(collection_name: str = DEFAULT_COLLECTION_NAME, config: AppC
 
 
 def list_indexed_documents(
-    collection_name: str = DEFAULT_COLLECTION_NAME,
+    collection_name: str | None = None,
     config: AppConfig | None = None,
 ) -> list[dict[str, Any]]:
     """Return a summary list of all unique documents currently indexed in ChromaDB."""
@@ -293,7 +393,7 @@ def list_indexed_documents(
 
 def delete_document(
     source_name: str,
-    collection_name: str = DEFAULT_COLLECTION_NAME,
+    collection_name: str | None = None,
     config: AppConfig | None = None,
 ) -> int:
     """Delete all chunks belonging to a specific source document."""
@@ -330,7 +430,7 @@ def delete_document(
     return max(0, before - after)
 
 
-def clear_collection(collection_name: str = DEFAULT_COLLECTION_NAME, config: AppConfig | None = None) -> None:
+def clear_collection(collection_name: str | None = None, config: AppConfig | None = None) -> None:
     """Safely delete all chunks and clear docstore & BM25 without dropping collection handles."""
 
     try:

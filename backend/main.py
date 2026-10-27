@@ -20,6 +20,7 @@ from core.vector_store import (
     clear_collection,
     count_documents,
     delete_document,
+    get_default_collection_name,
     list_indexed_documents,
 )
 
@@ -58,6 +59,9 @@ def health() -> dict[str, Any]:
         "status": "ok",
         "provider": config.llm_provider,
         "model": config.active_model,
+        "embedding_provider": config.embedding_provider,
+        "embedding_model": config.embedding_model,
+        "collection_name": get_default_collection_name(config),
         "stored_chunks": count_documents(config=config),
         "document_count": len(docs),
         "documents": docs,

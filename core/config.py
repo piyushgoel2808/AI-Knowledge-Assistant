@@ -31,6 +31,9 @@ class AppConfig:
     top_k: int = 5
     chunk_size: int = 1000
     chunk_overlap: int = 150
+    embedding_provider: str = "ollama"
+    embedding_model: str = "embeddinggemma-2"
+    chroma_collection_name: str | None = None
 
     @property
     def active_model(self) -> str:
@@ -80,4 +83,7 @@ def load_config() -> AppConfig:
         top_k=max(1, int(os.getenv("RAG_TOP_K", "5"))),
         chunk_size=max(200, int(os.getenv("CHUNK_SIZE", "1000"))),
         chunk_overlap=max(0, int(os.getenv("CHUNK_OVERLAP", "150"))),
+        embedding_provider=os.getenv("EMBEDDING_PROVIDER", "ollama").strip().lower(),
+        embedding_model=os.getenv("EMBEDDING_MODEL", "embeddinggemma-2").strip(),
+        chroma_collection_name=os.getenv("CHROMA_COLLECTION_NAME", "").strip() or None,
     )
