@@ -14,6 +14,8 @@ chroma/
 data/chroma/
 data/uploads/
 data/hf_cache/
+data/*.sqlite3
+*.sqlite3
 *.docx
 ~$*
 frontend/node_modules/

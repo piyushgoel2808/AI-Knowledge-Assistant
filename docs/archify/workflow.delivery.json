@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "45bb22ae-93a0-4465-9ab0-05beae9f9dcb",
+  "status": "current",
+  "command": "deliver",
+  "type": "workflow",
+  "input": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/workflow.json",
+  "output": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/workflow.html",
+  "specification": {
+    "sha256": "e389a1773179a0298ab7d74bd43db2e4a92a2a4190a2fe7bf8a73f1ad94981c5",
+    "bytes": 3645
+  },
+  "artifact": {
+    "sha256": "5b1116330d69ffe70cf2b07de677928873201368d3d8f3c2ec271c787ecd9157",
+    "bytes": 843620
+  }
+}

@@ -1,0 +1,302 @@
+{
+  "schema_version": 1,
+  "diagram_type": "class",
+  "meta": {
+    "title": "AI Knowledge Assistant Domain Classes & Interfaces",
+    "subtitle": "Object-oriented structure showing RAG document pipelines, ChromaDB vector management, and pluggable LLM provider contracts.",
+    "output": "docs/archify/class.html",
+    "quality_profile": "showcase"
+  },
+  "layout": {
+    "mode": "grid",
+    "gapX": 64,
+    "gapY": 48
+  },
+  "types": [
+    {
+      "id": "document_processor",
+      "label": "DocumentProcessor",
+      "kind": "class",
+      "sublabel": "Parses documents and generates text chunks",
+      "row": 0,
+      "col": 0,
+      "width": 240,
+      "attributes": [
+        {
+          "name": "chunk_size",
+          "type": "int = 1000",
+          "visibility": "private"
+        },
+        {
+          "name": "chunk_overlap",
+          "type": "int = 150",
+          "visibility": "private"
+        }
+      ],
+      "methods": [
+        {
+          "name": "load_file",
+          "parameters": "path: Path",
+          "returns": "list[RawPage]",
+          "visibility": "public"
+        },
+        {
+          "name": "split_pages",
+          "parameters": "pages: list[RawPage]",
+          "returns": "list[DocumentChunk]",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "vector_store_manager",
+      "label": "VectorStoreManager",
+      "kind": "class",
+      "sublabel": "Embedded ChromaDB vector client",
+      "row": 0,
+      "col": 1,
+      "width": 250,
+      "attributes": [
+        {
+          "name": "client",
+          "type": "PersistentClient",
+          "visibility": "private"
+        },
+        {
+          "name": "collection",
+          "type": "Collection",
+          "visibility": "private"
+        }
+      ],
+      "methods": [
+        {
+          "name": "add_documents",
+          "parameters": "chunks: list[DocumentChunk]",
+          "returns": "list[str]",
+          "visibility": "public"
+        },
+        {
+          "name": "similarity_search",
+          "parameters": "query: str, top_k: int",
+          "returns": "list[RetrievedChunk]",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "base_llm_provider",
+      "label": "BaseLLMProvider",
+      "kind": "interface",
+      "sublabel": "Pluggable model generation contract",
+      "row": 0,
+      "col": 2.5,
+      "width": 250,
+      "methods": [
+        {
+          "name": "generate",
+          "parameters": "prompt: str, system: str",
+          "returns": "LLMResponse",
+          "visibility": "public",
+          "abstract": true
+        },
+        {
+          "name": "check_health",
+          "returns": "ProviderHealth",
+          "visibility": "public",
+          "abstract": true
+        }
+      ]
+    },
+    {
+      "id": "document_chunk",
+      "label": "DocumentChunk",
+      "kind": "record",
+      "sublabel": "Extracted text passage with metadata",
+      "row": 1,
+      "col": 0,
+      "width": 240,
+      "attributes": [
+        {
+          "name": "chunk_id",
+          "type": "str",
+          "visibility": "public"
+        },
+        {
+          "name": "source",
+          "type": "str",
+          "visibility": "public"
+        },
+        {
+          "name": "page",
+          "type": "Optional[int]",
+          "visibility": "public"
+        },
+        {
+          "name": "content",
+          "type": "str",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "retrieved_chunk",
+      "label": "RetrievedChunk",
+      "kind": "record",
+      "sublabel": "Ranked neighbor with similarity score",
+      "row": 1,
+      "col": 1,
+      "width": 250,
+      "attributes": [
+        {
+          "name": "chunk_id",
+          "type": "str",
+          "visibility": "public"
+        },
+        {
+          "name": "similarity",
+          "type": "float",
+          "visibility": "public"
+        },
+        {
+          "name": "distance",
+          "type": "float",
+          "visibility": "public"
+        },
+        {
+          "name": "cite_index",
+          "type": "int",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "ollama_provider",
+      "label": "OllamaProvider",
+      "kind": "class",
+      "sublabel": "Local Gemma 4:e4b runner",
+      "row": 1,
+      "col": 2,
+      "width": 240,
+      "attributes": [
+        {
+          "name": "model",
+          "type": "str = \"gemma4:e4b\"",
+          "visibility": "private"
+        },
+        {
+          "name": "base_url",
+          "type": "str",
+          "visibility": "private"
+        }
+      ],
+      "methods": [
+        {
+          "name": "generate",
+          "parameters": "prompt: str, system: str",
+          "returns": "LLMResponse",
+          "visibility": "public"
+        },
+        {
+          "name": "check_health",
+          "returns": "ProviderHealth",
+          "visibility": "public"
+        }
+      ]
+    },
+    {
+      "id": "gemini_provider",
+      "label": "GeminiProvider",
+      "kind": "class",
+      "sublabel": "Cloud fallback via Google GenAI SDK",
+      "row": 1,
+      "col": 3,
+      "width": 240,
+      "attributes": [
+        {
+          "name": "model",
+          "type": "str = \"gemini-2.5-flash\"",
+          "visibility": "private"
+        },
+        {
+          "name": "api_key",
+          "type": "str",
+          "visibility": "private"
+        }
+      ],
+      "methods": [
+        {
+          "name": "generate",
+          "parameters": "prompt: str, system: str",
+          "returns": "LLMResponse",
+          "visibility": "public"
+        },
+        {
+          "name": "check_health",
+          "returns": "ProviderHealth",
+          "visibility": "public"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "rel_processor_chunk",
+      "from": "document_processor",
+      "to": "document_chunk",
+      "kind": "dependency",
+      "label": "produces"
+    },
+    {
+      "id": "rel_manager_chunk",
+      "from": "vector_store_manager",
+      "to": "document_chunk",
+      "kind": "dependency",
+      "label": "indexes"
+    },
+    {
+      "id": "rel_manager_retrieved",
+      "from": "vector_store_manager",
+      "to": "retrieved_chunk",
+      "kind": "dependency",
+      "label": "retrieves"
+    },
+    {
+      "id": "rel_ollama_implements",
+      "from": "ollama_provider",
+      "to": "base_llm_provider",
+      "kind": "realization"
+    },
+    {
+      "id": "rel_gemini_implements",
+      "from": "gemini_provider",
+      "to": "base_llm_provider",
+      "kind": "realization"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Strategy Pattern for Providers",
+      "items": [
+        "BaseLLMProvider interface allows seamless runtime swapping between local Ollama and cloud APIs.",
+        "Both streaming and non-streaming responses return standardized LLMResponse dataclasses."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Immutable Provenance Records",
+      "items": [
+        "DocumentChunk and RetrievedChunk are immutable data structures.",
+        "Guarantees that citation references carry uncorrupted page numbers and chunk hashes."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Decoupled Vector Operations",
+      "items": [
+        "VectorStoreManager handles embedded ChromaDB initialization and cosine search.",
+        "No direct dependency on HTTP controllers or UI components."
+      ]
+    }
+  ]
+}

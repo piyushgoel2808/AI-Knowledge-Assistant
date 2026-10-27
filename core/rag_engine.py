@@ -7,7 +7,13 @@ from dataclasses import dataclass
 from typing import Sequence
 
 from core.ai_service import BaseLLMProvider, create_llm_provider
+from core.attribution_verifier import (
+    detect_multi_document_disagreements,
+    verify_answer_attributions,
+)
 from core.config import AppConfig, load_config
+from core.query_condenser import condense_query
+from core.reranker import CrossEncoderReranker, default_reranker
 from core.vector_store import RetrievedChunk, count_documents, search_documents
 
 
@@ -34,6 +40,7 @@ def answer_question(
     top_k: int | None = None,
     config: AppConfig | None = None,
     provider: BaseLLMProvider | None = None,
+    reranker: CrossEncoderReranker | None = None,
 ) -> dict[str, object]:
     """Answer a question using only retrieved document context."""
 
@@ -46,15 +53,26 @@ def answer_question(
             "sources": [],
             "confidence": "low",
             "refusal": True,
+            "has_disagreements": False,
+            "disagreements": [],
         }
 
     # Cap retrieval at top_k (default 5) instead of loading the entire database into the prompt
-    desired_k = top_k if top_k is not None else resolved_config.top_k
-    search_limit = max(1, min(desired_k, total_indexed_chunks))
+    raw_k = top_k if top_k is not None else getattr(resolved_config, "top_k", 5)
+    desired_k = int(raw_k) if isinstance(raw_k, (int, float)) else 5
+    total_valid = int(total_indexed_chunks) if isinstance(total_indexed_chunks, (int, float)) else 1
+    candidate_limit = max(1, min(desired_k * 3, total_valid))
+
+    resolved_provider = provider or create_llm_provider(resolved_config)
+    standalone_query = condense_query(
+        question=question,
+        chat_history=chat_history,
+        provider=resolved_provider,
+    )
 
     retrieved_chunks = search_documents(
-        query=question,
-        top_k=search_limit,
+        query=standalone_query,
+        top_k=candidate_limit,
         config=resolved_config,
     )
 
@@ -64,11 +82,34 @@ def answer_question(
             "sources": [],
             "confidence": "low",
             "refusal": True,
+            "standalone_query": standalone_query,
+            "has_disagreements": False,
+            "disagreements": [],
         }
 
-    resolved_provider = provider or create_llm_provider(resolved_config)
+    # Cross-encoder reranking & deterministic refusal fast-path
+    active_reranker = reranker or default_reranker
+    reranked_chunks = active_reranker.rerank(
+        query=standalone_query,
+        chunks=retrieved_chunks,
+        top_k=desired_k,
+    )
+
+    if active_reranker.should_abstain(reranked_chunks):
+        return {
+            "answer": "I could not find the answer in the uploaded documents.",
+            "sources": [],
+            "confidence": "low",
+            "refusal": True,
+            "standalone_query": standalone_query,
+            "has_disagreements": False,
+            "disagreements": [],
+            "model": resolved_config.active_model,
+            "provider": resolved_config.llm_provider,
+        }
+
     system_prompt = _build_system_prompt()
-    prompt = _build_prompt(question=question, chat_history=chat_history, chunks=retrieved_chunks)
+    prompt = _build_prompt(question=question, chat_history=chat_history, chunks=reranked_chunks)
     llm_response = resolved_provider.generate(prompt=prompt, system_prompt=system_prompt)
 
     answer_text = llm_response.text.strip()
@@ -83,22 +124,35 @@ def answer_question(
         if "s" in match.lower() or match.strip().isdigit() or "," in match:
             numbers = re.findall(r"\d+", match)
             cited_indices.update(
-                int(n) for n in numbers if 1 <= int(n) <= len(retrieved_chunks)
+                int(n) for n in numbers if 1 <= int(n) <= len(reranked_chunks)
             )
+
+    # Multi-document disagreement detection
+    disagreements = detect_multi_document_disagreements(reranked_chunks)
+    has_disagreements = len(disagreements) > 0
 
     sources: list[dict[str, object]] = []
     if not is_refusal:
         if cited_indices:
-            for index, chunk in enumerate(retrieved_chunks, start=1):
+            for index, chunk in enumerate(reranked_chunks, start=1):
                 if index in cited_indices:
                     sources.append(_build_source_entry(chunk, index, answer_text))
             confidence = "high"
         else:
             # Fallback: if the model answered substantively without bracket citations,
             # attach the top matching retrieved chunks for transparency
-            for index, chunk in enumerate(retrieved_chunks[:2], start=1):
+            for index, chunk in enumerate(reranked_chunks[:2], start=1):
                 sources.append(_build_source_entry(chunk, index, answer_text))
             confidence = "medium" if sources else "low"
+
+        # Sentence-level attribution entailment verification
+        sources = verify_answer_attributions(
+            answer_text=answer_text,
+            chunks=reranked_chunks,
+            sources=sources,
+        )
+        if any(s.get("verified") is False for s in sources):
+            confidence = "unverified"
     else:
         confidence = "low"
 
@@ -107,6 +161,9 @@ def answer_question(
         "sources": sources,
         "confidence": confidence,
         "refusal": is_refusal,
+        "standalone_query": standalone_query,
+        "has_disagreements": has_disagreements,
+        "disagreements": disagreements,
         "model": resolved_config.active_model,
         "provider": resolved_config.llm_provider,
     }
@@ -166,6 +223,8 @@ def _build_system_prompt() -> str:
         "If the context does not contain the answer, respond exactly with: "
         "'I could not find the answer in the uploaded documents.' "
         "Do not use outside knowledge. Do not guess. "
+        "Where retrieved documents contain conflicting policies, numbers, or rules, do NOT choose one arbitrarily or average them. "
+        "Explicitly report the discrepancy: 'Sources disagree: [Source 1] specifies X, whereas [Source 2] specifies Y.' "
         "Format your response clearly (use bullet points when listing multiple items) and only state claims supported by the context. "
         "IMPORTANT: You MUST cite the specific source context you used by appending its exact marker (e.g., [S1], [S2]) to the end of every relevant sentence or bullet."
     )
@@ -215,8 +274,9 @@ def _format_context(chunks: Sequence[RetrievedChunk]) -> str:
         source = chunk.metadata.get("source", "unknown")
         page = chunk.metadata.get("page", "n/a")
         section = chunk.metadata.get("section", "Document")
+        context_body = (chunk.parent_content or chunk.content).strip()
         lines.append(
-            f"[S{index}] source={source} page={page} section={section}\n{chunk.content.strip()}"
+            f"[S{index}] source={source} page={page} section={section}\n{context_body}"
         )
     return "\n\n".join(lines)
 
@@ -232,4 +292,5 @@ def _chunk_to_source(chunk: RetrievedChunk) -> dict[str, object]:
         "chunk_id": chunk.id,
         "distance": distance,
         "similarity": similarity,
+        "rerank_score": chunk.rerank_score,
     }

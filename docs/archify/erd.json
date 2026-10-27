@@ -1,0 +1,332 @@
+{
+  "schema_version": 1,
+  "diagram_type": "erd",
+  "meta": {
+    "title": "AI Knowledge Assistant RAG & Storage Schema",
+    "locale": "en",
+    "output": "docs/archify/erd.html",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "ingestion",
+        "label": "Document Ingestion",
+        "focus": [
+          "document",
+          "chunk",
+          "embedding"
+        ],
+        "note": "Uploaded raw files decomposed into chunk text and dense vector embeddings."
+      },
+      {
+        "id": "retrieval",
+        "label": "Retrieval & Grounding",
+        "focus": [
+          "chunk",
+          "citation",
+          "message"
+        ],
+        "note": "Semantic search maps retrieved chunk vectors into verifiable message citations."
+      },
+      {
+        "id": "chat",
+        "label": "Conversation Sessions",
+        "focus": [
+          "session",
+          "message"
+        ],
+        "note": "Multi-turn user and assistant interactions grouped under session state."
+      }
+    ]
+  },
+  "layout": {
+    "mode": "grid",
+    "gapY": 42,
+    "gapX": 64
+  },
+  "entities": [
+    {
+      "id": "document",
+      "label": "uploaded_document",
+      "tag": "storage",
+      "row": 0,
+      "col": 0,
+      "width": 240,
+      "attributes": [
+        {
+          "name": "source",
+          "type": "varchar(255)",
+          "key": "pk"
+        },
+        {
+          "name": "file_path",
+          "type": "varchar(512)"
+        },
+        {
+          "name": "source_type",
+          "type": "varchar(16)"
+        },
+        {
+          "name": "file_size_bytes",
+          "type": "bigint"
+        },
+        {
+          "name": "uploaded_at",
+          "type": "timestamptz"
+        }
+      ]
+    },
+    {
+      "id": "chunk",
+      "label": "document_chunk",
+      "tag": "indexing",
+      "row": 0,
+      "col": 1,
+      "width": 260,
+      "attributes": [
+        {
+          "name": "id",
+          "type": "varchar(128)",
+          "key": "pk"
+        },
+        {
+          "name": "document_source",
+          "type": "varchar(255)",
+          "key": "fk",
+          "references": "document.source"
+        },
+        {
+          "name": "page",
+          "type": "int"
+        },
+        {
+          "name": "section",
+          "type": "varchar(128)"
+        },
+        {
+          "name": "chunk_index",
+          "type": "int"
+        },
+        {
+          "name": "char_count",
+          "type": "int"
+        },
+        {
+          "name": "word_count",
+          "type": "int"
+        },
+        {
+          "name": "content",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "id": "embedding",
+      "label": "vector_embedding",
+      "tag": "chromadb",
+      "row": 0,
+      "col": 2,
+      "width": 240,
+      "attributes": [
+        {
+          "name": "id",
+          "type": "varchar(128)",
+          "key": "pk"
+        },
+        {
+          "name": "chunk_id",
+          "type": "varchar(128)",
+          "key": "fk",
+          "references": "chunk.id"
+        },
+        {
+          "name": "vector_dim",
+          "type": "int"
+        },
+        {
+          "name": "model_name",
+          "type": "varchar(64)"
+        },
+        {
+          "name": "distance_metric",
+          "type": "varchar(16)"
+        }
+      ]
+    },
+    {
+      "id": "citation",
+      "label": "citation_reference",
+      "tag": "retrieval",
+      "row": 1,
+      "col": 0,
+      "width": 240,
+      "attributes": [
+        {
+          "name": "id",
+          "type": "varchar(64)",
+          "key": "pk"
+        },
+        {
+          "name": "message_id",
+          "type": "varchar(64)",
+          "key": "fk",
+          "references": "message.id"
+        },
+        {
+          "name": "chunk_id",
+          "type": "varchar(128)",
+          "key": "fk",
+          "references": "chunk.id"
+        },
+        {
+          "name": "cite_index",
+          "type": "int"
+        },
+        {
+          "name": "similarity",
+          "type": "numeric(6,4)"
+        },
+        {
+          "name": "distance",
+          "type": "numeric(6,4)"
+        }
+      ]
+    },
+    {
+      "id": "message",
+      "label": "chat_message",
+      "tag": "chat",
+      "row": 1,
+      "col": 1,
+      "width": 260,
+      "attributes": [
+        {
+          "name": "id",
+          "type": "varchar(64)",
+          "key": "pk"
+        },
+        {
+          "name": "session_id",
+          "type": "varchar(64)",
+          "key": "fk",
+          "references": "session.id"
+        },
+        {
+          "name": "role",
+          "type": "varchar(16)"
+        },
+        {
+          "name": "content",
+          "type": "text"
+        },
+        {
+          "name": "confidence",
+          "type": "varchar(16)"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz"
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "label": "chat_session",
+      "tag": "chat",
+      "row": 1,
+      "col": 2,
+      "width": 240,
+      "attributes": [
+        {
+          "name": "id",
+          "type": "varchar(64)",
+          "key": "pk"
+        },
+        {
+          "name": "model",
+          "type": "varchar(64)"
+        },
+        {
+          "name": "provider",
+          "type": "varchar(32)"
+        },
+        {
+          "name": "top_k",
+          "type": "int"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamptz"
+        }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "chunk_to_document",
+      "from": "chunk",
+      "to": "document",
+      "label": "extracted from",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "embedding_to_chunk",
+      "from": "embedding",
+      "to": "chunk",
+      "label": "indexes",
+      "fromCardinality": "one",
+      "toCardinality": "one"
+    },
+    {
+      "id": "message_to_session",
+      "from": "message",
+      "to": "session",
+      "label": "belongs to",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "citation_to_message",
+      "from": "citation",
+      "to": "message",
+      "label": "grounds",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "citation_to_chunk",
+      "from": "citation",
+      "to": "chunk",
+      "label": "references",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Deterministic Chunk Keys",
+      "items": [
+        "Chunk IDs are constructed deterministically: {source}:{page}:{chunk_index}:{batch_idx}:{sha1_8}.",
+        "Re-uploading the same document filename purges all existing chunks prior to upsert."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Dense Vector Embeddings",
+      "items": [
+        "all-MiniLM-L6-v2 produces 384-dimensional normalized float vectors.",
+        "Cosine distance stored in ChromaDB HNSW segments, converted to similarity = max(0, 1 - d)."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Auditable Grounding & Citations",
+      "items": [
+        "Every assistant message citation links directly back to the exact chunk_id and source page.",
+        "Citations include distance and similarity thresholds to support automatic refusal."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "c7f1a044-3559-45c8-aa27-3561ff97e92c",
+  "status": "current",
+  "command": "deliver",
+  "type": "sequence",
+  "input": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/sequence.json",
+  "output": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/sequence.html",
+  "specification": {
+    "sha256": "cc8f8279c3f723760444235efe9ac68ba014964fcfef69ee4d1d05079c2b6eca",
+    "bytes": 3355
+  },
+  "artifact": {
+    "sha256": "25b36997a39df34d23a4885dc9d79d19a826e7191e6f5b4a465fce7e2c83d364",
+    "bytes": 837029
+  }
+}

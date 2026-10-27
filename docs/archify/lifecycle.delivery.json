@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "ea95df96-5357-4e72-8a28-fbc7c05489c8",
+  "status": "current",
+  "command": "deliver",
+  "type": "lifecycle",
+  "input": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/lifecycle.json",
+  "output": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/lifecycle.html",
+  "specification": {
+    "sha256": "95ca409a90046951e65e518b2bf789afd905a402db85ec8ecb6fe94cbd966f82",
+    "bytes": 4343
+  },
+  "artifact": {
+    "sha256": "027e4ffd8805438208628fdd001e75a431fb2229f2bd6c52c077f8fd4e8a9ab1",
+    "bytes": 846255
+  }
+}

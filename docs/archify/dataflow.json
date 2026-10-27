@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "RAG Document Ingestion & Vector Lineage Pipeline",
+    "output": "dataflow.html",
+    "viewBox": [1080, 520],
+    "animation": "trace",
+    "quality_profile": "showcase"
+  },
+  "stages": [
+    { "label": "1. Ingest" },
+    { "label": "2. Extract" },
+    { "label": "3. Chunk" },
+    { "label": "4. Index" },
+    { "label": "5. Query" }
+  ],
+  "nodes": [
+    { "id": "pdf_source", "type": "frontend", "label": "PDF Upload", "sublabel": ".pdf multipart", "stage": 0, "row": 0, "tag": "documents" },
+    { "id": "doc_source", "type": "frontend", "label": "DOCX / TXT", "sublabel": ".docx / .txt", "stage": 0, "row": 2, "tag": "text files" },
+    { "id": "pymupdf", "type": "backend", "label": "PyMuPDF Parser", "sublabel": "native text + tables", "stage": 1, "row": 0, "tag": "fitz" },
+    { "id": "ocr_fallback", "type": "security", "label": "Tesseract OCR", "sublabel": "scanned fallback", "stage": 1, "row": 2, "tag": "2x pixmap" },
+    { "id": "splitter", "type": "backend", "label": "Recursive Splitter", "sublabel": "1000ch / 150ov", "stage": 2, "row": 0, "tag": "paragraphs" },
+    { "id": "metadata", "type": "backend", "label": "Metadata Tagger", "sublabel": "source, page, section", "stage": 2, "row": 2, "tag": "lineage" },
+    { "id": "embedder", "type": "database", "label": "all-MiniLM-L6-v2", "sublabel": "384-dim dense embed", "stage": 3, "row": 0, "tag": "PyTorch CPU" },
+    { "id": "chroma", "type": "database", "label": "ChromaDB Store", "sublabel": "HNSW cosine space", "stage": 3, "row": 2, "tag": "persistent" },
+    { "id": "retriever", "type": "backend", "label": "Top-K Retriever", "sublabel": "cosine distance", "stage": 4, "row": 0, "tag": "top_k=5" },
+    { "id": "gemma", "type": "cloud", "label": "Ollama gemma4:e4b", "sublabel": "Apple Metal GPU", "stage": 4, "row": 2, "tag": "grounded [S1]" }
+  ],
+  "flows": [
+    { "id": "f1", "from": "pdf_source", "to": "pymupdf", "label": "stream pages", "classification": "PDF binary", "variant": "emphasis", "route": "straight" },
+    { "id": "f2", "from": "doc_source", "to": "ocr_fallback", "label": "unstructured doc", "classification": "DOCX/TXT", "variant": "default", "route": "straight" },
+    { "id": "f3", "from": "pymupdf", "to": "ocr_fallback", "label": "empty text page", "classification": "scanned image", "variant": "dashed" },
+    { "id": "f4", "from": "pymupdf", "to": "splitter", "label": "extracted text", "classification": "clean text", "variant": "emphasis", "route": "straight" },
+    { "id": "f5", "from": "ocr_fallback", "to": "splitter", "label": "OCR characters", "classification": "recovered text", "variant": "default" },
+    { "id": "f6", "from": "splitter", "to": "metadata", "label": "text slices", "classification": "chunks", "variant": "default" },
+    { "id": "f7", "from": "metadata", "to": "embedder", "label": "tagged chunks", "classification": "Document objects", "variant": "emphasis" },
+    { "id": "f8", "from": "embedder", "to": "chroma", "label": "dense vectors", "classification": "embeddings", "variant": "emphasis" },
+    { "id": "f9", "from": "chroma", "to": "retriever", "label": "similarity match", "classification": "ranked chunks", "variant": "emphasis" },
+    { "id": "f10", "from": "retriever", "to": "gemma", "label": "prompt context", "classification": "[S1..S5] markers", "variant": "emphasis" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Data Lineage & Traceability",
+      "items": [
+        "Every chunk retains source filename, page number, and section header",
+        "Deterministic chunk IDs prevent stale duplicates on re-upload"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Strict Grounding",
+      "items": [
+        "RecursiveCharacterTextSplitter maintains paragraph and sentence integrity",
+        "ChromaDB cosine space maps directly to match confidence scores"
+      ]
+    }
+  ]
+}

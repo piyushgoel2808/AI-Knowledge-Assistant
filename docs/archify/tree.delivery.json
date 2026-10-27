@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b6fcf802-721b-4177-9613-cdd6746b70f6",
+  "status": "current",
+  "command": "deliver",
+  "type": "tree",
+  "input": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/tree.json",
+  "output": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/tree.html",
+  "specification": {
+    "sha256": "6d86c4dcb58b6de99f3dde2c8937062996fdd0f8a2258a9e4f0ec2b1648ab15d",
+    "bytes": 4609
+  },
+  "artifact": {
+    "sha256": "c6f23a8dc54a9ca976d696a3b16384e97e5426567e9609c07c2da525c63cdb89",
+    "bytes": 868235
+  }
+}

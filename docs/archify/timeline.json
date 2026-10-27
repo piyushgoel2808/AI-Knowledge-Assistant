@@ -1,0 +1,118 @@
+{
+  "schema_version": 1,
+  "diagram_type": "timeline",
+  "meta": {
+    "title": "Deployment Port Collision & Remediation Incident",
+    "subtitle": "Chronological trace of the NewsLens AI port conflict, container shutdown, port remapping, and successful recovery.",
+    "output": "docs/archify/timeline.html",
+    "evidence": "observed",
+    "timezone": "Asia/Kolkata",
+    "quality_profile": "showcase"
+  },
+  "lanes": [
+    {
+      "id": "deployment",
+      "label": "Deployment & Compose"
+    },
+    {
+      "id": "monitoring",
+      "label": "Telemetry & Alerts"
+    },
+    {
+      "id": "remediation",
+      "label": "Remediation & Fixes"
+    }
+  ],
+  "events": [
+    {
+      "id": "e1",
+      "at": "2026-10-27T21:00:00+05:30",
+      "title": "Initial Compose Deployment",
+      "detail": "Spun up containers binding host ports 8000 and 5173.",
+      "lane": "deployment",
+      "kind": "change"
+    },
+    {
+      "id": "e2",
+      "at": "2026-10-27T21:05:00+05:30",
+      "title": "Port Collision Alert (Err 409)",
+      "detail": "Socket bind failed: ports 8000 and 5173 already reserved by NewsLens AI.",
+      "lane": "monitoring",
+      "kind": "alert"
+    },
+    {
+      "id": "e3",
+      "at": "2026-10-27T21:12:00+05:30",
+      "title": "Collision Root Cause Identified",
+      "detail": "Inspected active Docker sockets; found NewsLens AI daemon holding 8000.",
+      "lane": "remediation",
+      "kind": "action"
+    },
+    {
+      "id": "e4",
+      "at": "2026-10-27T21:18:00+05:30",
+      "title": "Conflicting Containers Stopped",
+      "detail": "Killed colliding backend/frontend instances to release host sockets.",
+      "lane": "remediation",
+      "kind": "action"
+    },
+    {
+      "id": "e5",
+      "at": "2026-10-27T21:25:00+05:30",
+      "title": "Port Remapping Implemented",
+      "detail": "Reconfigured docker-compose.yml to expose backend:8001 and frontend:5174.",
+      "lane": "deployment",
+      "kind": "change"
+    },
+    {
+      "id": "e6",
+      "at": "2026-10-27T21:32:00+05:30",
+      "title": "Hot-Reload Containers Relaunched",
+      "detail": "Spun up new compose stack with volume bind mounts and isolated network.",
+      "lane": "deployment",
+      "kind": "action"
+    },
+    {
+      "id": "e7",
+      "at": "2026-10-27T21:36:00+05:30",
+      "title": "Health Check Green (200 OK)",
+      "detail": "GET :8001/health confirmed Gemma 4:e4b model connection and ChromaDB ready.",
+      "lane": "monitoring",
+      "kind": "recovery"
+    },
+    {
+      "id": "e8",
+      "at": "2026-10-27T21:40:00+05:30",
+      "title": "Incident Closed & Postmortem",
+      "detail": "Both AI Knowledge Assistant and NewsLens AI operate concurrently without port clashes.",
+      "lane": "remediation",
+      "kind": "recovery"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "rose",
+      "title": "Initial Conflict",
+      "items": [
+        "Concurrent local dev stacks bound to standard 8000/5173 ports caused socket collision.",
+        "Error surfaced immediately as Docker socket bind failure."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Resolution Strategy",
+      "items": [
+        "Freed locked host ports without rebooting Docker daemon.",
+        "Permanently separated ports: AI Knowledge Assistant (8001/5174) vs NewsLens AI (8000/5173)."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Verification",
+      "items": [
+        "Independent CORS and proxy configuration confirmed operational.",
+        "Full local test suite passed across both isolated environments."
+      ]
+    }
+  ]
+}

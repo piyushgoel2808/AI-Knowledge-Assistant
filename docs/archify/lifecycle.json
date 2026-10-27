@@ -1,0 +1,188 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Order Processing State Machine & Lifecycle",
+    "output": "docs/archify/lifecycle.html",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase"
+  },
+  "mainPath": [
+    "draft",
+    "pending",
+    "paid",
+    "shipped",
+    "delivered"
+  ],
+  "states": [
+    {
+      "id": "draft",
+      "type": "start",
+      "label": "Draft",
+      "sublabel": "cart items composed",
+      "tag": "init",
+      "step": "01"
+    },
+    {
+      "id": "pending",
+      "type": "active",
+      "label": "Pending",
+      "sublabel": "payment authorization",
+      "tag": "checkout",
+      "step": "02"
+    },
+    {
+      "id": "paid",
+      "type": "active",
+      "label": "Paid",
+      "sublabel": "funds settled & allocated",
+      "tag": "settled",
+      "step": "03"
+    },
+    {
+      "id": "shipped",
+      "type": "active",
+      "label": "Shipped",
+      "sublabel": "carrier in transit",
+      "tag": "logistics",
+      "step": "04"
+    },
+    {
+      "id": "delivered",
+      "type": "success",
+      "label": "Delivered",
+      "sublabel": "fulfilled to customer",
+      "tag": "complete",
+      "step": "05"
+    },
+    {
+      "id": "payment_retry",
+      "type": "waiting",
+      "label": "Payment Retry",
+      "sublabel": "backoff retry loop (max 3)",
+      "tag": "recovery"
+    },
+    {
+      "id": "payment_failed",
+      "type": "failure",
+      "label": "Payment Failed",
+      "sublabel": "hard decline or timeout",
+      "tag": "error"
+    },
+    {
+      "id": "cancelled",
+      "type": "failure",
+      "label": "Cancelled",
+      "sublabel": "order voided & stock released",
+      "tag": "terminal"
+    },
+    {
+      "id": "refunded",
+      "type": "neutral",
+      "label": "Refunded",
+      "sublabel": "reverse payment & return",
+      "tag": "terminal"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "draft-pending",
+      "from": "draft",
+      "to": "pending",
+      "label": "checkout"
+    },
+    {
+      "id": "pending-paid",
+      "from": "pending",
+      "to": "paid",
+      "label": "capture success"
+    },
+    {
+      "id": "paid-shipped",
+      "from": "paid",
+      "to": "shipped",
+      "label": "fulfill package"
+    },
+    {
+      "id": "shipped-delivered",
+      "from": "shipped",
+      "to": "delivered",
+      "label": "delivery confirmed"
+    },
+    {
+      "id": "pending-payment_retry",
+      "from": "pending",
+      "to": "payment_retry",
+      "label": "network timeout",
+      "variant": "dashed"
+    },
+    {
+      "id": "payment_retry-pending",
+      "from": "payment_retry",
+      "to": "pending",
+      "label": "retry charge"
+    },
+    {
+      "id": "payment_retry-payment_failed",
+      "from": "payment_retry",
+      "to": "payment_failed",
+      "label": "3 retries exhausted",
+      "variant": "security"
+    },
+    {
+      "id": "draft-cancelled",
+      "from": "draft",
+      "to": "cancelled",
+      "label": "cart expired",
+      "variant": "security"
+    },
+    {
+      "id": "pending-cancelled",
+      "from": "pending",
+      "to": "cancelled",
+      "label": "user abort",
+      "variant": "security"
+    },
+    {
+      "id": "payment_failed-cancelled",
+      "from": "payment_failed",
+      "to": "cancelled",
+      "label": "auto-cancel 24h",
+      "variant": "security"
+    },
+    {
+      "id": "paid-refunded",
+      "from": "paid",
+      "to": "refunded",
+      "label": "return approved",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Happy Path Progression",
+      "items": [
+        "Orders transition linearly: Draft -> Pending -> Paid -> Shipped -> Delivered.",
+        "Each stage requires explicit validation gates before advancing."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Transient Retry Loops",
+      "items": [
+        "Payment network drops branch into an exponential backoff retry state.",
+        "Up to 3 retries are permitted before transitioning to Payment Failed."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Terminal Resolution States",
+      "items": [
+        "Cancelled and Refunded are strictly terminal; allocated inventory is released.",
+        "Unsettled failed orders automatically purge after a 24-hour expiration window."
+      ]
+    }
+  ]
+}

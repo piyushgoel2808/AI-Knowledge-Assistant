@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "c9db196b-9dea-4bbf-99b2-cd296bfd68b4",
+  "status": "current",
+  "command": "deliver",
+  "type": "explainer",
+  "input": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/explainer.json",
+  "output": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/explainer.html",
+  "specification": {
+    "sha256": "38a3043c68634aa92ddcde01e403cc7fc0ea52c454e56338959ed97c27ae28c2",
+    "bytes": 5503
+  },
+  "artifact": {
+    "sha256": "02a844003f4fd3487429e52086cc092065e17f6166b0a147b5ce2d019c04b48d",
+    "bytes": 154546
+  },
+  "explainer": {
+    "preparedSha256": "eb6f057e5569aae594adf0274e1baf3aadead356b02d70f9374bf35d41c8f002",
+    "dependencies": []
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "2bebf57e-66f0-43cb-a94b-459b181736f5",
+  "status": "current",
+  "command": "deliver",
+  "type": "erd",
+  "input": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/erd.json",
+  "output": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/erd.html",
+  "specification": {
+    "sha256": "b1b67751b69511f200ec0d6873c54c30b1398f1a21f38fb7c1934ecd69d68d10",
+    "bytes": 7316
+  },
+  "artifact": {
+    "sha256": "456702ee09b21fb2cc8aa5373df133711e4f98c9d54b061ee8f5986f184e913b",
+    "bytes": 861244
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "API Request Lifecycle & RAG Query Trace",
+    "output": "sequence.html",
+    "viewBox": [1080, 640],
+    "column_fit": "spread",
+    "animation": "trace",
+    "quality_profile": "showcase"
+  },
+  "participants": [
+    { "id": "user", "type": "external", "label": "User", "sublabel": "Browser Session" },
+    { "id": "web", "type": "frontend", "label": "React UI", "sublabel": ":5174 Vite SPA" },
+    { "id": "gateway", "type": "backend", "label": "FastAPI Gateway", "sublabel": ":8001 main.py" },
+    { "id": "embed", "type": "backend", "label": "Embedding Engine", "sublabel": "all-MiniLM-L6-v2" },
+    { "id": "chroma", "type": "database", "label": "ChromaDB", "sublabel": "HNSW Cosine Index" },
+    { "id": "llm", "type": "cloud", "label": "Ollama (Metal)", "sublabel": "gemma4:e4b :11434" }
+  ],
+  "segments": [
+    { "from": 155, "to": 275, "label": "1. Client Request & Embedding" },
+    { "from": 285, "to": 355, "label": "2. Vector Retrieval" },
+    { "from": 365, "to": 535, "label": "3. LLM Inference & Highlighted Delivery" }
+  ],
+  "messages": [
+    { "id": "m1", "from": "user", "to": "web", "y": 165, "label": "Submit Question", "variant": "default" },
+    { "id": "m2", "from": "web", "to": "gateway", "y": 198, "label": "POST /chat {question, history, top_k}", "variant": "emphasis" },
+    { "id": "m3", "from": "gateway", "to": "embed", "y": 230, "label": "embed_query(question)", "variant": "default" },
+    { "id": "m4", "from": "embed", "to": "gateway", "y": 262, "label": "384-dim dense vector", "variant": "return" },
+    { "id": "m5", "from": "gateway", "to": "chroma", "y": 298, "label": "collection.query(vector, top_k=5)", "variant": "emphasis" },
+    { "id": "m6", "from": "chroma", "to": "gateway", "y": 335, "label": "chunks + metadata (page, section, dist)", "variant": "return" },
+    { "id": "m7", "from": "gateway", "to": "llm", "y": 375, "label": "generate(prompt, [S1..S5], think=false)", "variant": "emphasis" },
+    { "id": "m8", "from": "llm", "to": "gateway", "y": 450, "label": "Answer text with [S1, S2] citations", "variant": "return" },
+    { "id": "m9", "from": "gateway", "to": "web", "y": 485, "label": "200 OK JSON {answer, sources, confidence}", "variant": "return" },
+    { "id": "m10", "from": "web", "to": "user", "y": 520, "label": "Render answer & highlighted source cards", "variant": "return" }
+  ],
+  "activations": [
+    { "participant": "web", "from": 165, "to": 525, "type": "frontend" },
+    { "participant": "gateway", "from": 198, "to": 490, "type": "backend" },
+    { "participant": "embed", "from": 230, "to": 265, "type": "backend" },
+    { "participant": "chroma", "from": 298, "to": 340, "type": "database" },
+    { "participant": "llm", "from": 375, "to": 455, "type": "cloud" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Sub-Second Latency",
+      "items": [
+        "Pre-warmed gemma4:e4b on macOS Metal GPU yields response in ~400ms",
+        "Singleton-cached SentenceTransformer eliminates PyTorch initialization delay"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Grounding & Traceability",
+      "items": [
+        "Strict [S1] prompt format ensures factual containment",
+        "Post-processor validates citations and bolds sentence keywords"
+      ]
+    }
+  ]
+}

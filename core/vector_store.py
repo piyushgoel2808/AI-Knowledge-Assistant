@@ -14,6 +14,8 @@ from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunct
 from langchain_core.documents import Document
 
 from core.config import AppConfig, load_config
+from core.hierarchical_chunker import ParentDocStore
+from core.hybrid_search import bm25_index, reciprocal_rank_fusion
 
 
 DEFAULT_COLLECTION_NAME = "ai_knowledge_assistant"
@@ -28,6 +30,8 @@ class RetrievedChunk:
     content: str
     metadata: dict[str, object]
     distance: float | None = None
+    parent_content: str | None = None
+    rerank_score: float | None = None
 
 
 def _resolve_config(config: AppConfig | None = None) -> AppConfig:
@@ -106,6 +110,23 @@ def add_documents(
         metadatas.append(_sanitize_metadata(document.metadata))
 
     collection.upsert(ids=ids, documents=texts, metadatas=metadatas)
+
+    # Rebuild in-memory BM25 lexical index with all active chunks
+    try:
+        all_records = collection.get(include=["documents", "metadatas"])
+        if all_records and all_records.get("ids"):
+            corpus = [
+                {"id": doc_id, "content": doc_text, "metadata": doc_meta}
+                for doc_id, doc_text, doc_meta in zip(
+                    all_records["ids"],
+                    all_records.get("documents") or [],
+                    all_records.get("metadatas") or [],
+                )
+            ]
+            bm25_index.build(corpus)
+    except Exception:
+        pass
+
     return ids
 
 
@@ -115,36 +136,91 @@ def search_documents(
     collection_name: str = DEFAULT_COLLECTION_NAME,
     config: AppConfig | None = None,
 ) -> list[RetrievedChunk]:
-    """Retrieve the most relevant chunks for a user query."""
+    """Retrieve the most relevant chunks using Hybrid Search (Dense Vector + BM25) with RRF."""
 
     collection = get_collection(collection_name=collection_name, config=config)
     total = collection.count()
     if total == 0:
         return []
 
-    effective_k = max(1, min(top_k, total))
-    result = collection.query(
+    # Ensure BM25 is populated if empty
+    if bm25_index.count() == 0:
+        try:
+            all_records = collection.get(include=["documents", "metadatas"])
+            if all_records and all_records.get("ids"):
+                corpus = [
+                    {"id": doc_id, "content": doc_text, "metadata": doc_meta}
+                    for doc_id, doc_text, doc_meta in zip(
+                        all_records["ids"],
+                        all_records.get("documents") or [],
+                        all_records.get("metadatas") or [],
+                    )
+                ]
+                bm25_index.build(corpus)
+        except Exception:
+            pass
+
+    fetch_k = max(1, min(top_k * 3, total))
+    dense_result = collection.query(
         query_texts=[query],
-        n_results=effective_k,
+        n_results=fetch_k,
         include=["documents", "metadatas", "distances"],
     )
 
-    chunks: list[RetrievedChunk] = []
-    documents = result.get("documents", [[]])[0] if result.get("documents") else []
-    metadatas = result.get("metadatas", [[]])[0] if result.get("metadatas") else []
-    distances = result.get("distances", [[]])[0] if result.get("distances") else []
-    ids = result.get("ids", [[]])[0] if result.get("ids") else []
+    dense_docs = dense_result.get("documents", [[]])[0] if dense_result.get("documents") else []
+    dense_metas = dense_result.get("metadatas", [[]])[0] if dense_result.get("metadatas") else []
+    dense_dists = dense_result.get("distances", [[]])[0] if dense_result.get("distances") else []
+    dense_ids = dense_result.get("ids", [[]])[0] if dense_result.get("ids") else []
 
-    for index, content in enumerate(documents):
-        metadata = metadatas[index] if index < len(metadatas) and metadatas[index] else {}
-        distance = distances[index] if index < len(distances) else None
-        chunk_id = ids[index] if index < len(ids) else _build_fallback_id(index)
+    # Dense candidate map
+    candidate_map: dict[str, dict[str, Any]] = {}
+    for idx, d_id in enumerate(dense_ids):
+        candidate_map[d_id] = {
+            "id": d_id,
+            "content": dense_docs[idx],
+            "metadata": dense_metas[idx] if idx < len(dense_metas) else {},
+            "distance": dense_dists[idx] if idx < len(dense_dists) else None,
+        }
+
+    # BM25 lexical candidate search
+    bm25_matches = bm25_index.search(query, top_k=fetch_k)
+    sparse_ids = [m["id"] for m in bm25_matches]
+    for m in bm25_matches:
+        if m["id"] not in candidate_map:
+            candidate_map[m["id"]] = {
+                "id": m["id"],
+                "content": m["content"],
+                "metadata": m.get("metadata") or {},
+                "distance": None,
+            }
+
+    # Apply Reciprocal Rank Fusion
+    fused_ranks = reciprocal_rank_fusion([dense_ids, sparse_ids], k=60)
+    top_fused_ids = [cand_id for cand_id, _ in fused_ranks][:top_k]
+
+    doc_store = ParentDocStore()
+    chunks: list[RetrievedChunk] = []
+
+    for cand_id in top_fused_ids:
+        cand = candidate_map.get(cand_id)
+        if not cand:
+            continue
+
+        meta = cand["metadata"]
+        parent_id = meta.get("parent_id")
+        parent_content = None
+        if parent_id:
+            parent_chunk = doc_store.get_parent(str(parent_id))
+            if parent_chunk:
+                parent_content = parent_chunk.content
+
         chunks.append(
             RetrievedChunk(
-                id=chunk_id,
-                content=content,
-                metadata=dict(metadata),
-                distance=distance,
+                id=cand["id"],
+                content=cand["content"],
+                metadata=dict(meta),
+                distance=cand["distance"],
+                parent_content=parent_content,
             )
         )
 

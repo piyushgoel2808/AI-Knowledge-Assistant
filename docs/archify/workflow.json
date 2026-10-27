@@ -1,0 +1,65 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "CI/CD & Automated Deployment Workflow",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "output": "workflow.html"
+  },
+  "lanes": [
+    { "id": "dev", "label": "Developer" },
+    { "id": "ci", "label": "CI Validation" },
+    { "id": "policy", "label": "Governance & Security", "variant": "exception" },
+    { "id": "deploy", "label": "Production & Deploy" }
+  ],
+  "phases": [
+    { "id": "change", "label": "1. Change", "fromCol": 0, "toCol": 1 },
+    { "id": "verify", "label": "2. Verification", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "release", "label": "3. Promotion", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "ci_checks", "label": "Blocking automated gates", "lane": "ci", "fromCol": 1, "toCol": 2, "variant": "emphasis" },
+    { "id": "policy_gates", "label": "Human & scan controls", "lane": "policy", "fromCol": 3, "toCol": 4, "variant": "security" }
+  ],
+  "mainPath": ["git_commit", "ci_test", "trivy_scan", "approval_gate", "docker_build", "canary_deploy", "health_check"],
+  "nodes": [
+    { "id": "git_commit", "lane": "dev", "col": 0, "type": "frontend", "label": "Push Commit", "sublabel": "feature branch", "width": 132 },
+    { "id": "ci_test", "lane": "ci", "col": 1, "type": "backend", "label": "PyTest & Vitest", "sublabel": "unit + integration", "tag": "automated", "width": 132 },
+    { "id": "trivy_scan", "lane": "ci", "col": 2, "type": "security", "label": "Security Scan", "sublabel": "Trivy + SAST", "tag": "blocking", "width": 132 },
+    { "id": "docker_build", "lane": "deploy", "col": 3, "type": "backend", "label": "Docker Build", "sublabel": "uv multi-arch :8001", "tag": "GHCR", "width": 132 },
+    { "id": "approval_gate", "lane": "policy", "col": 3, "type": "security", "label": "Approval Gate", "sublabel": "lead sign-off", "tag": "human gate", "width": 132 },
+    { "id": "ci_failed", "lane": "policy", "col": 2, "type": "security", "label": "Gate Failure", "sublabel": "stop release", "width": 132 },
+    { "id": "canary_deploy", "lane": "deploy", "col": 4, "type": "cloud", "label": "Canary Rollout", "sublabel": "10% traffic", "tag": "production", "width": 132 },
+    { "id": "health_check", "lane": "deploy", "col": 5, "type": "backend", "label": "Health Verify", "sublabel": "/health 200 OK", "width": 132 }
+  ],
+  "edges": [
+    { "id": "e1", "from": "git_commit", "to": "ci_test", "label": "trigger CI" },
+    { "id": "e2", "from": "ci_test", "to": "trivy_scan", "label": "tests pass" },
+    { "id": "e3", "from": "ci_test", "to": "ci_failed", "label": "failure", "variant": "security" },
+    { "id": "e4", "from": "trivy_scan", "to": "approval_gate", "label": "clean scan" },
+    { "id": "e5", "from": "approval_gate", "to": "docker_build", "label": "approved", "variant": "emphasis" },
+    { "id": "e6", "from": "docker_build", "to": "canary_deploy", "label": "image pushed" },
+    { "id": "e7", "from": "canary_deploy", "to": "health_check", "label": "promote 100%" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Fast uv Builds",
+      "items": [
+        "Astral uv caches Python wheels across CI runs in <15s",
+        "Vite builds and types-check in under 500ms"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Strict Deployment Guardrails",
+      "items": [
+        "Blocking vulnerability scans for container base images",
+        "Canary validation on port 8001 before full promotion",
+        "Automated health verification via /health endpoint"
+      ]
+    }
+  ]
+}

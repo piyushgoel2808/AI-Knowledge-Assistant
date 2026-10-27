@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "39a69dc1-3dde-4a44-ae4a-7dddffbf478f",
+  "status": "current",
+  "command": "deliver",
+  "type": "timeline",
+  "input": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/timeline.json",
+  "output": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/timeline.html",
+  "specification": {
+    "sha256": "f42ad98546bed91d335bb22efca978277e85e729fe72cfc28772b1905ac5576e",
+    "bytes": 3561
+  },
+  "artifact": {
+    "sha256": "ef964ddb0b17650321a05ade30a81d5a5b4519776ef1a0ec8c253f59335338e4",
+    "bytes": 843281
+  }
+}

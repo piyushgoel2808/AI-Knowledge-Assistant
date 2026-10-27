@@ -3,15 +3,13 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install dependencies first (leverages Docker cache)
+# Install dependencies first (cached unless package.json / package-lock.json changes)
 COPY package*.json ./
-RUN npm install
+RUN npm ci || npm install
 
-# Copy the rest of the frontend code
+# Copy source files (overridden at runtime by bind mount in docker-compose.yml)
 COPY . .
 
-# Expose the Vite port
-EXPOSE 5173
+EXPOSE 5174
 
-# Run the Vite server and expose it to the host network
-CMD ["npm", "run", "dev", "--", "--host"]
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5174"]

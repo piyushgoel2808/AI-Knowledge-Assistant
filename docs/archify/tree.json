@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "diagram_type": "tree",
+  "meta": {
+    "title": "AI Knowledge Assistant Codebase & Capability Hierarchy",
+    "subtitle": "Hierarchical decomposition of frontend, backend API, RAG core engine, data persistence, and orchestration.",
+    "output": "docs/archify/tree.html",
+    "quality_profile": "showcase"
+  },
+  "layout": {
+    "direction": "down"
+  },
+  "nodes": [
+    {
+      "id": "project_root",
+      "label": "AI Knowledge Assistant",
+      "sublabel": "Full-stack Local RAG System"
+    },
+    {
+      "id": "backend",
+      "label": "backend/",
+      "parent": "project_root",
+      "sublabel": "FastAPI REST API (:8001)"
+    },
+    {
+      "id": "frontend",
+      "label": "frontend/",
+      "parent": "project_root",
+      "sublabel": "React 19 + Vite UI (:5174)"
+    },
+    {
+      "id": "core",
+      "label": "core/",
+      "parent": "project_root",
+      "sublabel": "Shared RAG Engine & Providers"
+    },
+    {
+      "id": "data",
+      "label": "data/",
+      "parent": "project_root",
+      "sublabel": "Local Persistent Storage & Cache"
+    },
+    {
+      "id": "docs",
+      "label": "docs/",
+      "parent": "project_root",
+      "sublabel": "Technical Documentation & Archify"
+    },
+    {
+      "id": "devops",
+      "label": "deploy/",
+      "parent": "project_root",
+      "sublabel": "Docker Compose & Containers"
+    },
+    {
+      "id": "main_py",
+      "label": "main.py",
+      "parent": "backend",
+      "sublabel": "Endpoints (/chat, /upload, /health)"
+    },
+    {
+      "id": "schemas_py",
+      "label": "schemas.py",
+      "parent": "backend",
+      "sublabel": "Pydantic ChatRequest & SourceChunk"
+    },
+    {
+      "id": "fe_src",
+      "label": "src/",
+      "parent": "frontend",
+      "sublabel": "React components & Tailwind"
+    },
+    {
+      "id": "fe_config",
+      "label": "vite.config.js",
+      "parent": "frontend",
+      "sublabel": "HMR server & backend proxy"
+    },
+    {
+      "id": "vector_store_py",
+      "label": "vector_store.py",
+      "parent": "core",
+      "sublabel": "ChromaDB client & deterministic IDs"
+    },
+    {
+      "id": "document_loader_py",
+      "label": "document_loader.py",
+      "parent": "core",
+      "sublabel": "PDF, DOCX, TXT parsers & chunker"
+    },
+    {
+      "id": "llm_provider_py",
+      "label": "llm_provider.py",
+      "parent": "core",
+      "sublabel": "Ollama Gemma 4, Groq, Gemini SDK"
+    },
+    {
+      "id": "config_py",
+      "label": "config.py",
+      "parent": "core",
+      "sublabel": "Pydantic settings & defaults"
+    },
+    {
+      "id": "data_chroma",
+      "label": "chroma/",
+      "parent": "data",
+      "sublabel": "SQLite metadata + HNSW vector index"
+    },
+    {
+      "id": "data_uploads",
+      "label": "uploads/",
+      "parent": "data",
+      "sublabel": "Uploaded raw user documents"
+    },
+    {
+      "id": "data_hf",
+      "label": "hf_cache/",
+      "parent": "data",
+      "sublabel": "Local all-MiniLM-L6-v2 model weights"
+    },
+    {
+      "id": "docs_archify",
+      "label": "archify/",
+      "parent": "docs",
+      "sublabel": "Interactive visual system diagrams"
+    },
+    {
+      "id": "docs_specs",
+      "label": "specs/",
+      "parent": "docs",
+      "sublabel": "Architecture, ERD & interview guide"
+    },
+    {
+      "id": "compose_yml",
+      "label": "docker-compose.yml",
+      "parent": "devops",
+      "sublabel": "Multi-container hot-reload orchestrator"
+    },
+    {
+      "id": "backend_dockerfile",
+      "label": "backend.Dockerfile",
+      "parent": "devops",
+      "sublabel": "Python 3.11 slim PyTorch container"
+    },
+    {
+      "id": "frontend_dockerfile",
+      "label": "frontend.Dockerfile",
+      "parent": "devops",
+      "sublabel": "Node 20 Alpine Vite container"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Strict Architectural Boundaries",
+      "items": [
+        "Core package is completely decoupled from HTTP transport and UI layers.",
+        "Backend imports core services, exposing typed OpenAPI contracts."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Local Storage Partitioning",
+      "items": [
+        "data/ directory is partitioned into vector index, raw source files, and HuggingFace cache.",
+        "Mounted as a persistent host bind volume to survive container recreations."
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Hot-Reload Dev Pipeline",
+      "items": [
+        "frontend/ mounts src/ into Vite container for instant browser HMR.",
+        "backend/ mounts code into Uvicorn for sub-second auto-reload."
+      ]
+    }
+  ]
+}

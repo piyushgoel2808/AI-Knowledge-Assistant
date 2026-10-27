@@ -10,160 +10,158 @@ This document maps every directory, file, class, and function in the **AI Knowle
 AI-Knowledge-Assistant/
 ├── backend/
 │   ├── __init__.py
-│   └── main.py                              # FastAPI application & REST route handlers
+│   └── main.py                              # FastAPI router, background workers & REST endpoints
 ├── core/
 │   ├── __init__.py
-│   ├── ai_service.py                        # LLM adapter layer (Ollama, Gemini, Groq)
-│   ├── config.py                            # Environment configuration & defaults
-│   ├── ingestion.py                         # PDF/DOCX/TXT extraction, tables, OCR, chunking
-│   ├── rag_engine.py                        # Retrieval, prompt building, citation & highlighting
-│   └── vector_store.py                      # ChromaDB persistent client, indexing & search
+│   ├── ai_service.py                        # Pluggable LLM adapters (Ollama, Gemini, Groq)
+│   ├── attribution_verifier.py              # Sentence entailment judge & multi-doc disagreement engine
+│   ├── config.py                            # Pydantic/dataclass configuration & environment loader
+│   ├── hierarchical_chunker.py              # Parent-child chunker & SQLite docstore persistence
+│   ├── hybrid_search.py                     # BM25Okapi lexical index & Reciprocal Rank Fusion (k=60)
+│   ├── ingestion.py                         # PyMuPDF column sorting, Markdown table extractor & OCR
+│   ├── query_condenser.py                   # Conversational pronoun & ellipsis context rewriter
+│   ├── reranker.py                          # Cross-encoder reranking & deterministic refusal gate
+│   ├── task_registry.py                     # In-memory background ingestion task lifecycle manager
+│   └── vector_store.py                      # ChromaDB persistent collection, hybrid search & deduplication
 ├── frontend/
-│   ├── Dockerfile.frontend                  # Node 18 Alpine container definition for Vite
-│   ├── .dockerignore                        # Excludes node_modules and dist from Docker context
-│   ├── .env.example                         # Example frontend environment config
+│   ├── Dockerfile.frontend                  # Container definition for Vite dev server (:5174)
+│   ├── .env.example                         # Pre-configured frontend environment variables
 │   ├── index.html                           # Root HTML shell with Inter & JetBrains Mono fonts
-│   ├── package.json                         # Frontend dependencies & npm scripts
-│   ├── tsconfig.json                        # TypeScript compiler configuration
-│   ├── vite.config.ts                       # Vite dev server configuration (:5173)
+│   ├── package.json                         # Node dependencies & npm scripts
+│   ├── tsconfig.json                        # TypeScript compiler options
+│   ├── vite.config.ts                       # Vite server configuration (port 5174)
 │   └── src/
-│       ├── App.tsx                          # Homepage, RAG Workspace, and Architecture UI
-│       ├── api.ts                           # Typed fetch client for all backend endpoints
-│       ├── main.tsx                         # React DOM root mount
-│       ├── styles.css                       # Responsive CSS design system
-│       └── vite-env.d.ts                    # Vite TypeScript ambient declarations
+│       ├── App.tsx                          # Full React UI: Homepage, RAG Studio & Voice Layer
+│       ├── api.ts                           # Typed REST API client & response contracts
+│       ├── main.tsx                         # React 18 DOM mount
+│       ├── styles.css                       # Design system, animations & responsive styling
+│       └── vite-env.d.ts                    # TypeScript ambient declarations
 ├── Sample_doc/
-│   ├── JD - Data Quality Assurance.pdf      # Bundled sample PDF for testing RAG
-│   └── JD- Software Developer.pdf           # Bundled sample PDF for testing RAG
+│   ├── JD - Data Quality Assurance.pdf      # Bundled sample document for quickstart testing
+│   └── JD- Software Developer.pdf           # Bundled sample document for quickstart testing
 ├── docs/
-│   ├── architecture.md                      # System topology & Apple Silicon architecture
-│   ├── codebase-directory-and-references.md # Complete file and symbol reference
-│   ├── dataflow-end-to-end.md               # Ingestion & RAG query sequence diagrams
-│   ├── database-schema.md                   # ChromaDB collection, chunk ID & metadata schema
-│   └── features.md                          # Feature catalog, bug fixes & optimizations
-├── data/                                    # Runtime persistent volume (git-ignored)
-│   ├── chroma/                              # Persistent ChromaDB SQLite + HNSW segments
-│   ├── hf_cache/                            # Cached SentenceTransformer model weights
-│   └── uploads/                             # Uploaded source files (.pdf, .docx, .txt)
-├── .dockerignore                            # Root Docker build context exclusions
-├── .env.example                             # Template environment variables (default: gemma4:e4b)
-├── .gitignore                               # Git ignore rules
-├── Dockerfile.backend                       # Python 3.10-slim + Tesseract OCR backend image
-├── docker-compose.yml                       # Multi-container orchestration with live bind mounts
-├── requirements.txt                         # Python package dependencies
-└── README.md                                # Project overview & quickstart guide
+│   ├── architecture.md                      # High-level system topology & Apple Silicon Metal runtime
+│   ├── codebase-directory-and-references.md # Complete codebase tree & API symbol dictionary
+│   ├── database-schema.md                   # ChromaDB collection, SQLite docstore & ER diagrams
+│   ├── dataflow-end-to-end.md               # End-to-end sequence diagrams for ingestion & RAG
+│   ├── features.md                          # Production features, resolved issues & benchmarks
+│   ├── interview-guide.md                   # Technical interview preparation & architectural Q&A
+│   ├── production-rag-system.spec.md        # Formal RFC specification (SPEC-RAG-2026-V2)
+│   └── archify/                             # Interactive architectural diagram artifacts
+├── tests/
+│   ├── integration/
+│   │   ├── test_async_ingestion.py          # Asynchronous upload & polling lifecycle tests
+│   │   └── test_voice_and_disagreement_api.py # Voice layer & disagreement contract tests
+│   └── unit/
+│       ├── test_attribution_verifier.py     # Sentence entailment & contradiction unit tests
+│       ├── test_hierarchical_chunker.py     # Parent/child chunking & SQLite docstore tests
+│       ├── test_hybrid_search.py            # BM25Okapi exact matching & RRF fusion tests
+│       ├── test_layout_parser.py            # Multi-column sorting & table formatting tests
+│       ├── test_query_condenser.py          # Pronoun resolution & few-shot condensation tests
+│       └── test_reranker_and_abstention.py  # Cross-encoder scoring & abstention gate tests
+├── .scratch/
+│   └── tickets/                             # Vertical tracer-bullet ticket specs (TICK-001 to 008)
+├── data/                                    # Persistent local volume (git-ignored)
+│   ├── chroma/                              # Persistent ChromaDB HNSW binary segment store
+│   ├── docstore.sqlite3                     # SQLite parent document store
+│   ├── hf_cache/                            # Cached SentenceTransformer & reranker weights
+│   └── uploads/                             # Saved source files (.pdf, .docx, .txt)
+├── Dockerfile.backend                       # Python 3.10-slim + Tesseract OCR backend container
+├── docker-compose.yml                       # Docker Compose definition with live host bind mounts
+├── Makefile                                 # Fast developer CLI workflow commands
+├── requirements.txt                         # Python dependencies
+└── README.md                                # Project overview, quickstart & REST API reference
 ```
 
 ---
 
-## 2. Cross-Module Dependency Graph
+## 2. Cross-Module Call Graph
 
 ```mermaid
 flowchart LR
-    FE_App["frontend/src/App.tsx"] --> FE_API["frontend/src/api.ts"]
-    FE_API -->|"HTTP REST (:8000)"| BE_Main["backend/main.py"]
+    subgraph Frontend["frontend/src/"]
+        App["App.tsx"] --> APIClient["api.ts"]
+    end
 
-    BE_Main --> Core_Config["core/config.py"]
-    BE_Main --> Core_Ingest["core/ingestion.py"]
-    BE_Main --> Core_RAG["core/rag_engine.py"]
-    BE_Main --> Core_VS["core/vector_store.py"]
+    subgraph Backend["backend/"]
+        Main["main.py"]
+    end
 
-    Core_Ingest --> Core_Config
-    Core_RAG --> Core_Config
-    Core_RAG --> Core_VS
-    Core_RAG --> Core_AI["core/ai_service.py"]
-    Core_VS --> Core_Config
-    Core_AI --> Core_Config
+    subgraph CoreEngine["core/"]
+        TaskReg["task_registry.py"]
+        Ingest["ingestion.py"]
+        Chunker["hierarchical_chunker.py"]
+        RAG["rag_engine.py"]
+        VStore["vector_store.py"]
+        Hybrid["hybrid_search.py"]
+        Rerank["reranker.py"]
+        Condenser["query_condenser.py"]
+        Verifier["attribution_verifier.py"]
+        AI["ai_service.py"]
+    end
+
+    APIClient -->|"HTTP REST (:8001)"| Main
+    Main --> TaskReg
+    Main --> Ingest
+    Main --> Chunker
+    Main --> RAG
+    Main --> VStore
+
+    RAG --> Condenser
+    RAG --> VStore
+    RAG --> Rerank
+    RAG --> Chunker
+    RAG --> AI
+    RAG --> Verifier
+    VStore --> Hybrid
 ```
 
 ---
 
-## 3. Detailed Module & Symbol Reference
+## 3. Symbol Reference & Class Dictionary
 
-### 3.1 `backend/main.py` — FastAPI Gateway
+### `core/task_registry.py`
+- `class IngestionTask`: Data structure tracking `job_id`, `status`, `stage`, `progress_percent`, `processed_pages`, `total_pages`, `stored_chunks`, and `error`.
+- `class TaskRegistry`: In-memory thread-safe registry.
+  - `create_task(files: list[str]) -> IngestionTask`: Initializes job in `queued` state.
+  - `update_task(job_id: str, ...) -> IngestionTask`: Updates progress and active pipeline stage.
+  - `get_task(job_id: str) -> IngestionTask | None`: Retrieves current task status.
 
-| Symbol | Type | Description |
-| :--- | :--- | :--- |
-| `app` | `FastAPI` | Main ASGI application instance configured with CORS middleware for `localhost:5173` and `127.0.0.1:5173`. |
-| `ChatRequest` | `BaseModel` | Request schema for `POST /chat`: `question: str`, `history: list[dict]`, `top_k: int \| None`. |
-| `health()` | `GET /health` | Returns service status, active `provider`, active `model` (`gemma4:e4b`), `stored_chunks`, `document_count`, and indexed `documents` list. |
-| `get_documents()` | `GET /documents` | Lists all unique documents indexed in ChromaDB along with chunk, page, section, and word counts. |
-| `upload_documents(files)` | `POST /documents/upload` | Saves uploaded `.pdf`, `.docx`, and `.txt` files to `data/uploads/`, extracts chunks via `ingest_file()`, and upserts them into ChromaDB. |
-| `load_sample_documents()` | `POST /documents/sample` | Copies and indexes the bundled PDFs from `Sample_doc/` into the knowledge base for instant one-click testing. |
-| `remove_document(source_name)` | `DELETE /documents/{source_name}` | Deletes all chunks belonging to `source_name` from ChromaDB and removes the file from `data/uploads/`. |
-| `chat(request)` | `POST /chat` | Converts request history into `ChatMessage` objects and invokes `answer_question()`. Maps provider errors to HTTP `502`. |
-| `clear_documents()` | `POST /documents/clear` | Drops and recreates the ChromaDB collection and deletes all uploaded files in `data/uploads/`. |
+### `core/hierarchical_chunker.py`
+- `class ParentChunk`: Represents rich 1200-token semantic section with metadata.
+- `class ChildChunk`: Represents compact 250-token leaf chunk referencing `parent_id`.
+- `class ParentDocStore`: SQLite-backed persistent document store (`data/docstore.sqlite3`).
+  - `upsert_parents(parents: Sequence[ParentChunk]) -> None`: Persists parent chunks.
+  - `get_parent(parent_id: str) -> ParentChunk | None`: Fetches parent chunk by ID.
+  - `delete_by_source(source_name: str) -> int`: Purges parent chunks for deleted documents.
+- `class HierarchicalChunker`:
+  - `split_documents(documents: Sequence[Document]) -> tuple[list[ParentChunk], list[Document]]`: Splits raw documents into parent and child chunk pairs.
 
----
+### `core/hybrid_search.py`
+- `reciprocal_rank_fusion(rank_lists: Sequence[Sequence[str]], k: int = 60) -> list[tuple[str, float]]`: Combines ranked candidate ID lists using Reciprocal Rank Fusion.
+- `class BM25Index`: In-memory lexical inverted index.
+  - `build(corpus: list[dict[str, Any]]) -> None`: Tokenizes chunk texts and constructs BM25Okapi instance.
+  - `search(query: str, top_k: int = 5) -> list[dict[str, Any]]`: Performs lexical keyword search.
 
-### 3.2 `core/config.py` — Runtime Configuration
+### `core/reranker.py`
+- `sigmoid(x: float) -> float`: Numerically stable sigmoid function.
+- `class CrossEncoderReranker`:
+  - `rerank(query: str, chunks: Sequence[RetrievedChunk], top_k: int | None = None) -> list[RetrievedChunk]`: Scores query-chunk pairs with cross-attention and populates `rerank_score`.
+  - `should_abstain(reranked_chunks: Sequence[RetrievedChunk], threshold: float | None = None) -> bool`: Flags abstention if top rerank score falls below threshold $\tau = 0.30$.
 
-| Symbol | Type | Description |
-| :--- | :--- | :--- |
-| `AppConfig` | `@dataclass(frozen=True)` | Immutable configuration container holding provider settings, storage paths, `top_k`, `chunk_size`, and `chunk_overlap`. |
-| `AppConfig.active_model` | `@property -> str` | Resolves the active model name (`ollama_model`, `gemini_model`, or `groq_model`) based on `llm_provider`. |
-| `load_config()` | `() -> AppConfig` | Reads environment variables with defaults: `LLM_PROVIDER=ollama`, `OLLAMA_MODEL=gemma4:e4b`, `RAG_TOP_K=5`, `CHUNK_SIZE=1000`, `CHUNK_OVERLAP=150`. |
+### `core/query_condenser.py`
+- `condense_query(question: str, chat_history: Sequence[object] | None, provider: BaseLLMProvider | None) -> str`: Rephrases conversational follow-up turns referencing pronouns or ellipsis into standalone retrieval queries.
 
----
+### `core/attribution_verifier.py`
+- `verify_citation_entailment(claim: str, snippet: str, threshold: float = 0.35) -> dict[str, Any]`: Verifies token overlap and strict numerical consistency between asserted claims and cited source excerpts.
+- `detect_multi_document_disagreements(chunks: Sequence[RetrievedChunk]) -> list[dict[str, Any]]`: Identifies conflicting metrics, numbers, or policies across different documents.
+- `verify_answer_attributions(answer_text: str, chunks: Sequence[RetrievedChunk], sources: list[dict[str, Any]]) -> list[dict[str, Any]]`: Enriches sources with verification status (`verified: true/false`).
 
-### 3.3 `core/ai_service.py` — LLM Provider Adapter Layer
+### `core/ingestion.py`
+- `sort_blocks_by_column(blocks: list[tuple]) -> list[tuple]`: Clusters text blocks by horizontal bounding box coordinates before reading order sorting to prevent cross-column text bleed.
+- `format_markdown_table(table_data: list[list[str | None]]) -> str`: Converts 2D cell matrices into clean GitHub-Flavored Markdown tables.
+- `prune_headers_footers(blocks: list[tuple], page_rect: pymupdf.Rect) -> list[tuple]`: Filters out running headers and footers based on vertical page margins.
+- `ingest_file(file_path: Path, config: AppConfig) -> list[Document]`: Main entrypoint parsing PDF, DOCX, and TXT files.
 
-| Symbol | Type | Description |
-| :--- | :--- | :--- |
-| `LLMResponse` | `@dataclass(frozen=True)` | Standardized wrapper containing `text: str` and `raw: Any \| None`. |
-| `BaseLLMProvider` | `ABC` | Abstract base class requiring `generate(prompt, system_prompt) -> LLMResponse`. |
-| `OllamaProvider` | `BaseLLMProvider` | Calls `POST {base_url}/api/generate` using a pooled `requests.Session` with `keep_alive="30m"`, `think=False`, and `temperature=0.1`. |
-| `GeminiProvider` | `BaseLLMProvider` | Calls Google Gemini REST endpoint `v1beta/models/{model}:generateContent` with `systemInstruction`. |
-| `GroqProvider` | `BaseLLMProvider` | Calls Groq `client.chat.completions.create()` for cloud inference. |
-| `create_llm_provider(config)` | `Factory Function` | Instantiates the configured `BaseLLMProvider` implementation. |
-| `_strip_thinking_tags(text)` | `Helper Function` | Strips any `<think>...</think>` reasoning blocks from model outputs before citation parsing. |
-
----
-
-### 3.4 `core/ingestion.py` — Document Parsing & Chunking
-
-| Symbol | Type | Description |
-| :--- | :--- | :--- |
-| `SourceChunk` | `@dataclass(frozen=True)` | Intermediate extracted text unit with `text: str` and `metadata: dict`. |
-| `is_supported_file(file_path)` | `(str \| Path) -> bool` | Checks whether the file extension is in `{".pdf", ".docx", ".txt"}`. |
-| `ingest_file(file_path, config)` | `(str \| Path) -> list[Document]` | Extracts raw sections/pages and splits them with `RecursiveCharacterTextSplitter`. Adds `chunk_index`, `chunk_count`, `char_count`, and `word_count`. |
-| `_extract_pdf_chunks(path)` | `(Path) -> list[SourceChunk]` | Extracts page text via `pymupdf`, extracts tables via `page.find_tables()`, and runs safe `pytesseract` OCR fallback for scanned image pages. |
-| `_extract_docx_chunks(path)` | `(Path) -> list[SourceChunk]` | Groups paragraphs under Word heading styles (`Heading 1`, etc.) and converts DOCX tables into pipe-delimited Markdown tables. |
-| `_extract_txt_chunks(path)` | `(Path) -> list[SourceChunk]` | Reads plain text files with UTF-8 and automatic `latin-1` fallback. |
-
----
-
-### 3.5 `core/vector_store.py` — Persistent ChromaDB Operations
-
-| Symbol | Type | Description |
-| :--- | :--- | :--- |
-| `RetrievedChunk` | `@dataclass(frozen=True)` | Represents a retrieved chunk (`id`, `content`, `metadata`, `distance`). |
-| `_get_embedding_function()` | `@lru_cache(maxsize=1)` | Singleton `SentenceTransformerEmbeddingFunction("all-MiniLM-L6-v2")`. |
-| `_get_cached_client(path)` | `@lru_cache(maxsize=4)` | Singleton `chromadb.PersistentClient` per resolved storage directory. |
-| `get_collection(name, config)` | `Function` | Gets or creates the `ai_knowledge_assistant` collection with `{"hnsw:space": "cosine"}`. |
-| `add_documents(documents, ...)` | `Function` | Deduplicates existing chunks for any re-uploaded `source` filename, then upserts chunks with SHA-1 suffixed deterministic IDs. |
-| `search_documents(query, top_k)` | `Function` | Performs cosine similarity vector search bounded by `min(top_k, collection.count())`. |
-| `list_indexed_documents(...)` | `Function` | Aggregates chunk metadata by `source` to report per-file chunk count, page count, section count, and word count. |
-| `delete_document(source_name)` | `Function` | Deletes all chunks matching `where={"source": source_name}`. |
-| `clear_collection(...)` | `Function` | Deletes and recreates the ChromaDB collection empty. |
-
----
-
-### 3.6 `core/rag_engine.py` — Grounded RAG Orchestrator
-
-| Symbol | Type | Description |
-| :--- | :--- | :--- |
-| `ChatMessage` | `@dataclass(frozen=True)` | Conversation turn with `role` and `content`. |
-| `answer_question(...)` | `Function` | Orchestrates retrieval, prompt construction, LLM generation, refusal detection, citation extraction (`[S1]`, `[S2]`), and snippet highlighting. |
-| `_extract_and_highlight_match` | `Function` | Identifies sentences in cited chunks that share keywords with the generated answer and wraps matching terms in `**bold**` markers. |
-| `_is_refusal_response(text)` | `Function` | Detects when the LLM refuses to answer due to missing context. |
-
----
-
-### 3.7 `frontend/src/` — React TypeScript UI
-
-| File | Key Exports / Responsibilities |
-| :--- | :--- |
-| `frontend/src/api.ts` | Exports `getHealth()`, `uploadDocuments()`, `loadSampleDocuments()`, `deleteDocument()`, `clearDocuments()`, and `askQuestion()`, plus TypeScript types `Source`, `IndexedDocument`, `HealthStatus`, and `ChatMessage`. |
-| `frontend/src/App.tsx` | Implements the 3-view navigation (`Home`, `RAG Workspace`, `System Architecture`), live telemetry cards, file uploader, sample PDF loader, per-document deletion list, `top_k` tuning slider, and citation/highlight renderer. |
-| `frontend/src/styles.css` | Complete design system with CSS custom properties, responsive grid layouts, citation pills, confidence badges, and highlighted source cards. |
+### `core/rag_engine.py`
+- `answer_question(question: str, chat_history: Sequence[ChatMessage] | None, top_k: int | None, ...) -> dict[str, Any]`: Orchestrates query condensation, hybrid retrieval, cross-encoder reranking, abstention gating, parent context hydration, LLM generation, sentence entailment verification, and contradiction reporting.

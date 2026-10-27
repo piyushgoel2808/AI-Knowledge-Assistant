@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b3d95f2f-dce7-49da-beb5-95d40fd7eae6",
+  "status": "current",
+  "command": "deliver",
+  "type": "dataflow",
+  "input": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/dataflow.json",
+  "output": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/dataflow.html",
+  "specification": {
+    "sha256": "c4e312b863292b3dadb9ea6e62e50527ca68b2323ce2fbbcdfa4e9270a13bbd9",
+    "bytes": 3938
+  },
+  "artifact": {
+    "sha256": "ee5386521ac9768f642e03cd23b1d3372b0518f3d36cf1925e53296d1dc9f742",
+    "bytes": 843057
+  }
+}

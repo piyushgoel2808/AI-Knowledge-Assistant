@@ -1,157 +1,157 @@
 # Database & Storage Schema
 
-The **AI Knowledge Assistant** uses a zero-cloud, local persistent storage architecture backed by **ChromaDB** (`data/chroma/`), raw file storage (`data/uploads/`), and a persistent HuggingFace model cache (`data/hf_cache/`).
+The **AI Knowledge Assistant** uses a zero-cloud, dual-tier local persistent storage architecture combining **ChromaDB** (`data/chroma/`) for leaf vector embeddings and **SQLite** (`data/docstore.sqlite3`) for rich parent document chunks, alongside raw upload files (`data/uploads/`) and HuggingFace cached model weights (`data/hf_cache/`).
 
 ---
 
-## 1. Storage Architecture & Entity Relationships
-
-Although ChromaDB is a document-oriented vector database rather than a traditional relational RDBMS, chunks within the `ai_knowledge_assistant` collection follow a strict logical schema linking uploaded files, extracted sections/pages, and vector embeddings.
+## 1. Dual-Storage Architecture & Entity Relationships
 
 ```mermaid
 erDiagram
-    UPLOADED_DOCUMENT ||--o{ VECTOR_CHUNK : "split into"
-    COLLECTION ||--o{ VECTOR_CHUNK : "stores"
+    UPLOADED_FILE ||--o{ PARENT_CHUNK : "parsed into"
+    PARENT_CHUNK ||--o{ VECTOR_CHILD_CHUNK : "split into (1:N)"
+    COLLECTION ||--o{ VECTOR_CHILD_CHUNK : "indexes embeddings"
+    TASK_REGISTRY ||--o{ INGESTION_TASK : "tracks"
 
-    COLLECTION {
-        string name PK "ai_knowledge_assistant"
-        string distance_metric "cosine (hnsw:space)"
-        string embedding_model "all-MiniLM-L6-v2 (384-dim)"
-    }
-
-    UPLOADED_DOCUMENT {
-        string source PK "Filename (e.g. JD- Software Developer.pdf)"
+    UPLOADED_FILE {
+        string source PK "Source document name (e.g. JD- Software Developer.pdf)"
         string file_path "data/uploads/{source}"
         string source_type "pdf | docx | txt"
+        int file_size_bytes "Disk file size"
     }
 
-    VECTOR_CHUNK {
-        string id PK "{source}:{page}:{chunk_index}:{batch_idx}:{sha1_8}"
+    PARENT_CHUNK {
+        string id PK "parent:{source_sha1}:{parent_idx}"
+        string source FK "Source document name"
+        int page "1-based page number"
+        string section "Document heading or Table name"
+        string content "Rich section text (~1200 tokens)"
+        int token_count "Estimated token count"
+        string child_ids "Comma-separated list of leaf child IDs"
+        string created_at "ISO 8601 timestamp"
+    }
+
+    VECTOR_CHILD_CHUNK {
+        string id PK "{source}:{page}:{child_idx}:{batch_idx}:{sha1_8}"
+        string parent_id FK "References PARENT_CHUNK.id"
         float_384 embedding "384-dimensional float32 vector"
-        string document "Chunk text content (<= 1000 chars)"
-        string source FK "Source document filename"
-        string file_path "Relative path in data/uploads/"
-        int page "1-based page number (PDF only, omitted if None)"
-        string section "Guessed heading, section title, or Table N"
+        string document "Leaf chunk text (~250 tokens)"
+        string source FK "Source document name"
+        int page "1-based page number"
+        string section "Section heading"
         string source_type "pdf | docx | txt"
-        int chunk_index "1-based index within page/section"
-        int chunk_count "Total chunks in that page/section"
-        int char_count "Character length of chunk"
-        int word_count "Word count of chunk"
+        int char_count "Character length"
+        int word_count "Word count"
+    }
+
+    INGESTION_TASK {
+        string job_id PK "UUID4 string (e.g. task_a7e2b...)"
+        string status "queued | processing | completed | failed"
+        string stage "queued | parsing | chunking | embedding | completed | failed"
+        float progress_percent "0.0 to 100.0"
+        int processed_pages "Pages processed so far"
+        int total_pages "Total pages detected"
+        int stored_chunks "Total indexed chunks"
+        string error "Error message if failed"
     }
 ```
 
 ---
 
-## 2. ChromaDB Collection Specification
+## 2. SQLite Parent Document Store (`data/docstore.sqlite3`)
+
+The parent document store retains full 1200-token semantic sections, ensuring the LLM receives comprehensive context while vector retrieval operates on compact 250-token child chunks.
+
+### Table: `parent_chunks`
+
+```sql
+CREATE TABLE IF NOT EXISTS parent_chunks (
+    id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    page INTEGER,
+    section TEXT,
+    content TEXT NOT NULL,
+    token_count INTEGER NOT NULL,
+    child_ids TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_parent_source ON parent_chunks (source);
+```
+
+| Column | Type | Description |
+| :--- | :--- | :--- |
+| `id` | `TEXT PRIMARY KEY` | Deterministic key: `parent:{source_hash}:{index}` |
+| `source` | `TEXT NOT NULL` | Filename of the uploaded document |
+| `page` | `INTEGER` | 1-based page number (or `NULL` if section spans multiple) |
+| `section` | `TEXT` | Extracted section title, heading, or table name |
+| `content` | `TEXT NOT NULL` | Verbatim text of parent section (including Markdown tables) |
+| `token_count` | `INTEGER NOT NULL`| Word-based token estimate |
+| `child_ids` | `TEXT NOT NULL` | JSON or comma-separated list of associated child vector IDs |
+| `created_at` | `TIMESTAMP` | Record creation timestamp |
+
+---
+
+## 3. ChromaDB Leaf Vector Collection (`data/chroma/`)
+
+Leaf chunks (~250 tokens) are indexed in ChromaDB for high-recall semantic vector search.
 
 | Property | Value | Description |
 | :--- | :--- | :--- |
-| **Client Type** | `chromadb.PersistentClient` | Embedded SQLite + local HNSW binary segment storage |
-| **Persistence Path** | `data/chroma/` | Mapped to `/app/data/chroma` inside Docker via `./data:/app/data` |
-| **Collection Name** | `ai_knowledge_assistant` | Default collection name (`DEFAULT_COLLECTION_NAME`) |
-| **Embedding Model** | `all-MiniLM-L6-v2` | Sentence-Transformers model producing 384-dimensional normalized vectors |
-| **Distance Metric** | `cosine` (`{"hnsw:space": "cosine"}`) | Cosine distance $d \in [0, 2]$; converted to similarity score $s = \max(0, 1 - d)$ |
+| **Client Type** | `chromadb.PersistentClient` | Embedded SQLite + local HNSW binary segments |
+| **Collection Name** | `ai_knowledge_assistant` | Default vector collection |
+| **Embedding Model** | `all-MiniLM-L6-v2` | Sentence-Transformers 384-dimensional normalized embeddings |
+| **Distance Metric** | `cosine` (`hnsw:space: cosine`) | Cosine distance $d \in [0, 2]$; similarity score $s = \max(0, 1 - d)$ |
+| **Metadata Fields** | `source`, `page`, `section`, `parent_id`, `source_type`, `char_count`, `word_count` | Rich filtering metadata |
 
----
+### Deterministic Leaf Chunk ID Format
 
-## 3. Deterministic Chunk ID Format
-
-Each chunk stored in ChromaDB is assigned a deterministic primary key (`id`) generated by `_build_chunk_id()` in `core/vector_store.py`:
-
+Generated by `_build_chunk_id()` in `core/vector_store.py`:
 ```text
-{source}:{page}:{chunk_index}:{batch_index}:{sha1_prefix}
+{source}:{page}:{chunk_index}:{batch_index}:{content_sha1_8}
 ```
-
 **Example:**
 ```text
 JD- Software Developer.pdf:1:1:1:a94f2c1b
 ```
 
-- **`source`**: Original filename (`JD- Software Developer.pdf`)
-- **`page`**: Page number (`1` for PDFs, `na` for DOCX/TXT)
-- **`chunk_index`**: 1-based chunk index within that page or section
-- **`batch_index`**: 1-based position in the ingestion batch
-- **`sha1_prefix`**: First 8 hex characters of `SHA-1(page_content)`
-
-> [!NOTE]
-> When a file with the same `source` name is uploaded again, `add_documents()` first executes `collection.delete(where={"source": source_name})` before upserting the new chunks. This guarantees zero stale or duplicate chunks across re-uploads.
-
 ---
 
-## 4. Physical On-Disk Directory Layout (`./data`)
+## 4. In-Memory Task Registry Schema (`core/task_registry.py`)
 
-```mermaid
-flowchart TB
-    DataRoot["./data (Host Bind Mount -> /app/data)"]
-    DataRoot --> ChromaDir["chroma/"]
-    DataRoot --> UploadsDir["uploads/"]
-    DataRoot --> HFCacheDir["hf_cache/"]
+Used for non-blocking asynchronous uploads, tracking batch progress across parsing, chunking, and vector embedding stages:
 
-    ChromaDir --> SQLite["chroma.sqlite3 (Metadata & Collection Catalog)"]
-    ChromaDir --> HNSW["<uuid>/ (HNSW Binary Vector Index Segments)"]
-
-    UploadsDir --> PDFFile["Uploaded .pdf, .docx, .txt Files"]
-    HFCacheDir --> MiniLM["models--sentence-transformers--all-MiniLM-L6-v2/"]
+```python
+@dataclass
+class IngestionTask:
+    job_id: str
+    status: str            # 'queued' | 'processing' | 'completed' | 'failed'
+    stage: str             # 'queued' | 'parsing' | 'chunking' | 'embedding' | 'completed' | 'failed'
+    progress_percent: float # 0.0 to 100.0
+    files: list[str]
+    processed_pages: int = 0
+    total_pages: int = 0
+    stored_chunks: int = 0
+    error: str | None = None
 ```
 
 ---
 
-## 5. REST API Payload Schemas
+## 5. Storage Directory Layout
 
-### 5.1 `GET /health` Response
-```json
-{
-  "status": "ok",
-  "provider": "ollama",
-  "model": "gemma4:e4b",
-  "stored_chunks": 6,
-  "document_count": 2,
-  "documents": [
-    {
-      "source": "JD - Data Quality Assurance.pdf",
-      "source_type": "PDF",
-      "chunks": 3,
-      "page_count": 2,
-      "section_count": 2,
-      "total_words": 342
-    }
-  ]
-}
-```
-
-### 5.2 `POST /chat` Request & Response
-**Request:**
-```json
-{
-  "question": "What skills are required for the Software Developer role?",
-  "history": [
-    { "role": "user", "content": "Hello" },
-    { "role": "assistant", "content": "How can I help with your documents?" }
-  ],
-  "top_k": 5
-}
-```
-
-**Response:**
-```json
-{
-  "answer": "The Software Developer role requires proficiency in Python and modern web frameworks [S1].",
-  "sources": [
-    {
-      "source": "JD- Software Developer.pdf",
-      "page": 1,
-      "section": "Job Description: Software Developer",
-      "snippet": "...requires **proficiency** in **Python** and **modern** **frameworks**...",
-      "chunk_id": "JD- Software Developer.pdf:1:1:1:8f3d2a10",
-      "distance": 0.312,
-      "similarity": 0.688,
-      "cite_index": 1
-    }
-  ],
-  "confidence": "high",
-  "refusal": false,
-  "model": "gemma4:e4b",
-  "provider": "ollama"
-}
+```text
+data/
+├── chroma/                  # ChromaDB SQLite metadata + HNSW index segments
+│   ├── chroma.sqlite3
+│   └── [uuid]/
+│       ├── data_level0.bin
+│       ├── header.bin
+│       ├── length.bin
+│       └── link_list.bin
+├── docstore.sqlite3         # SQLite parent document store (ParentDocStore)
+├── hf_cache/                # Cached sentence-transformers & cross-encoder weights
+│   └── models--sentence-transformers--all-MiniLM-L6-v2/
+└── uploads/                 # Persisted source files (.pdf, .docx, .txt)
+    ├── JD- Software Developer.pdf
+    └── JD - Data Quality Assurance.pdf
 ```

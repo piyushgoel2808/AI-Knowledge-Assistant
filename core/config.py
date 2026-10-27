@@ -1,15 +1,17 @@
-"""Application configuration helpers."""
+"""Application configuration helpers with live .env hot-reloading and Docker host translation."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 import os
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 from dotenv import load_dotenv
 
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DOTENV_PATH = PROJECT_ROOT / ".env"
 
 
 @dataclass(frozen=True)
@@ -43,12 +45,30 @@ class AppConfig:
         return "unknown"
 
 
+def _resolve_ollama_url(raw_url: str) -> str:
+    """Translate localhost/127.0.0.1 to host.docker.internal automatically when running in Docker."""
+    cleaned = raw_url.strip()
+    if os.getenv("RUNNING_IN_DOCKER", "").lower() in {"1", "true", "yes"}:
+        parsed = urlparse(cleaned)
+        if parsed.hostname in {"localhost", "127.0.0.1"}:
+            port_suffix = f":{parsed.port}" if parsed.port else ":11434"
+            return urlunparse(parsed._replace(netloc=f"host.docker.internal{port_suffix}"))
+    return cleaned
+
+
 def load_config() -> AppConfig:
-    """Load config values with sensible local defaults (Ollama + gemma4:e4b)."""
+    """Reload .env dynamically on each call so config changes never require a container rebuild."""
+
+    if DOTENV_PATH.exists():
+        load_dotenv(dotenv_path=DOTENV_PATH, override=True)
+    else:
+        load_dotenv(override=True)
+
+    raw_ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
     return AppConfig(
         llm_provider=os.getenv("LLM_PROVIDER", "ollama").strip().lower(),
-        ollama_base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").strip(),
+        ollama_base_url=_resolve_ollama_url(raw_ollama_url),
         ollama_model=os.getenv("OLLAMA_MODEL", "gemma4:e4b").strip(),
         gemini_api_key=os.getenv("GEMINI_API_KEY", "").strip(),
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip(),

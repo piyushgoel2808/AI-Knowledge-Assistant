@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "30ce7b93-fcb7-4d15-a650-75e57e323a81",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/architecture.json",
+  "output": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/architecture.html",
+  "specification": {
+    "sha256": "1c0947751e328234ab3f146e2a4950d09686ed2c61fbcb90a621b4f0cc9a7455",
+    "bytes": 4689
+  },
+  "artifact": {
+    "sha256": "42a05e3a0fcee44f9ac44aa38c81a3fe35b983f7dd56d13b95758a954eabeb9e",
+    "bytes": 855648
+  }
+}

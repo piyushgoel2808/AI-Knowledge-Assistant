@@ -15,6 +15,7 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from core.config import AppConfig, load_config
+from core.hierarchical_chunker import HierarchicalChunker, ParentDocStore
 
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".txt"}
@@ -44,7 +45,7 @@ def load_documents(file_paths: Sequence[str | Path], config: AppConfig | None = 
 
 
 def ingest_file(file_path: str | Path, config: AppConfig | None = None) -> list[Document]:
-    """Load a supported file and split it into metadata-rich chunks."""
+    """Load a supported file and split it into metadata-rich child chunks while persisting parent contexts."""
 
     path = Path(file_path)
     if not is_supported_file(path):
@@ -54,27 +55,20 @@ def ingest_file(file_path: str | Path, config: AppConfig | None = None) -> list[
     raw_chunks = _extract_source_chunks(path)
     documents: list[Document] = []
 
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=resolved_config.chunk_size,
-        chunk_overlap=resolved_config.chunk_overlap,
-        separators=["\n\n", "\n", ". ", " ", ""],
+    # Use Hierarchical Chunker (Parents ~1200t, Children ~250-300t)
+    chunker = HierarchicalChunker(
+        parent_chunk_size=1500,
+        parent_overlap=150,
+        child_chunk_size=resolved_config.chunk_size,
+        child_overlap=resolved_config.chunk_overlap,
     )
+    doc_store = ParentDocStore()
 
     for raw_chunk in raw_chunks:
-        split_texts = splitter.split_text(raw_chunk.text)
-        if not split_texts:
-            continue
-
-        for index, split_text in enumerate(split_texts, start=1):
-            cleaned_text = split_text.strip()
-            if not cleaned_text:
-                continue
-            metadata = dict(raw_chunk.metadata)
-            metadata["chunk_index"] = index
-            metadata["chunk_count"] = len(split_texts)
-            metadata["char_count"] = len(cleaned_text)
-            metadata["word_count"] = len(cleaned_text.split())
-            documents.append(Document(page_content=cleaned_text, metadata=metadata))
+        parents, children = chunker.split_text_hierarchical(raw_chunk.text, base_metadata=raw_chunk.metadata)
+        if parents:
+            doc_store.save_parents(parents)
+        documents.extend(children)
 
     return documents
 
@@ -90,34 +84,107 @@ def _extract_source_chunks(path: Path) -> list[SourceChunk]:
     raise ValueError(f"Unsupported file type: {suffix}")
 
 
+def format_markdown_table(rows: list[list[Any]]) -> str:
+    """Format a 2D matrix of extracted table cells into GitHub-Flavored Markdown table syntax."""
+    if not rows or len(rows) < 2:
+        return ""
+
+    cleaned_matrix: list[list[str]] = []
+    for row in rows:
+        cleaned_matrix.append([str(cell or "").replace("\n", " ").strip() for cell in row])
+
+    col_count = max(len(r) for r in cleaned_matrix)
+    if col_count == 0:
+        return ""
+
+    # Normalize row lengths
+    normalized: list[list[str]] = []
+    for r in cleaned_matrix:
+        normalized.append(r + [""] * (col_count - len(r)))
+
+    header_cells = normalized[0]
+    header_line = "| " + " | ".join(header_cells) + " |"
+    separator_line = "| " + " | ".join(["---"] * col_count) + " |"
+
+    data_lines = []
+    for r in normalized[1:]:
+        data_lines.append("| " + " | ".join(r) + " |")
+
+    return "\n".join([header_line, separator_line] + data_lines)
+
+
+def prune_headers_footers(
+    blocks: list[tuple],
+    page_height: float,
+    top_margin_ratio: float = 0.08,
+    bottom_margin_ratio: float = 0.08,
+) -> list[tuple]:
+    """Prune running headers and footers appearing in page margin bands."""
+    top_threshold = page_height * top_margin_ratio
+    bottom_threshold = page_height * (1.0 - bottom_margin_ratio)
+
+    body_blocks = []
+    for b in blocks:
+        # b = (x0, y0, x1, y1, text, block_no, block_type)
+        y0, y1 = b[1], b[3]
+        if y1 <= top_threshold:
+            # Header block
+            continue
+        if y0 >= bottom_threshold:
+            # Footer block
+            continue
+        body_blocks.append(b)
+
+    return body_blocks
+
+
+def sort_blocks_by_column(blocks: list[tuple], page_width: float) -> str:
+    """Sort text blocks by geometric column layout (left-to-right columns, top-to-bottom)."""
+    text_blocks = [b for b in blocks if len(b) >= 5 and (len(b) < 7 or b[6] == 0) and b[4].strip()]
+    if not text_blocks:
+        return ""
+
+    mid_x = page_width * 0.5
+    left_col = [b for b in text_blocks if b[0] < mid_x]
+    right_col = [b for b in text_blocks if b[0] >= mid_x]
+
+    # If substantial text exists on both halves, treat as multi-column
+    is_multi_column = len(left_col) >= 2 and len(right_col) >= 2
+
+    if is_multi_column:
+        left_col.sort(key=lambda b: (b[1], b[0]))
+        right_col.sort(key=lambda b: (b[1], b[0]))
+        ordered_blocks = left_col + right_col
+    else:
+        text_blocks.sort(key=lambda b: (b[1], b[0]))
+        ordered_blocks = text_blocks
+
+    return "\n\n".join(b[4].strip() for b in ordered_blocks if b[4].strip())
+
+
 def _extract_pdf_chunks(path: Path) -> list[SourceChunk]:
     chunks: list[SourceChunk] = []
 
     with pymupdf.open(path) as pdf:
         for page_number, page in enumerate(pdf, start=1):
-            text = page.get_text("text").strip()
+            page_rect = page.rect
+            raw_blocks = page.get_text("blocks")
+            pruned_blocks = prune_headers_footers(raw_blocks, page_height=page_rect.height)
+            text = sort_blocks_by_column(pruned_blocks, page_width=page_rect.width).strip()
 
-            # Extract structured tables if present on the PDF page
+            # Extract structured tables and format as GitHub-Flavored Markdown
             table_blocks: list[str] = []
             try:
                 finder = page.find_tables()
                 for t_idx, table in enumerate(getattr(finder, "tables", []), start=1):
                     extracted = table.extract()
-                    rows = []
-                    for row in extracted:
-                        if not row:
-                            continue
-                        cleaned_cells = [str(cell or "").replace("\n", " ").strip() for cell in row]
-                        if any(cleaned_cells):
-                            rows.append(" | ".join(cleaned_cells))
-                    if len(rows) >= 2:
-                        table_blocks.append(f"[Table {t_idx}]\n" + "\n".join(rows))
+                    md_table = format_markdown_table(extracted)
+                    if md_table:
+                        table_blocks.append(f"[Table {t_idx}]\n{md_table}")
             except Exception:
-                # Fallback gracefully if table detection is unsupported on a given page
                 pass
 
             # --- OCR FALLBACK LOGIC ---
-            # If standard text extraction returns nothing, the page is likely a scanned image
             if not text:
                 try:
                     pix = page.get_pixmap(matrix=pymupdf.Matrix(2, 2))
@@ -125,7 +192,6 @@ def _extract_pdf_chunks(path: Path) -> list[SourceChunk]:
                     image = Image.open(io.BytesIO(image_data))
                     text = pytesseract.image_to_string(image).strip()
                 except Exception:
-                    # Do not crash ingestion if Tesseract is not installed on host
                     text = ""
 
             if table_blocks:

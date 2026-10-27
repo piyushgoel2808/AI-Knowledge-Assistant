@@ -6,13 +6,15 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core.config import load_config
+from core.config import AppConfig, load_config
 from core.ingestion import collect_supported_files, ingest_file, is_supported_file
 from core.rag_engine import ChatMessage, answer_question
+from core.task_registry import task_registry
 from core.vector_store import (
     add_documents,
     clear_collection,
@@ -31,6 +33,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ],
@@ -71,8 +75,57 @@ def get_documents() -> dict[str, Any]:
     }
 
 
-@app.post("/documents/upload")
-async def upload_documents(files: list[UploadFile] = File(...)) -> dict[str, Any]:
+def execute_ingestion_job(job_id: str, file_paths: list[Path], config: AppConfig) -> None:
+    """Asynchronous background worker function to parse, chunk, and embed documents."""
+    try:
+        task_registry.update_task(job_id, status="processing", stage="parsing", progress_percent=15.0)
+        all_documents = []
+        total_files = len(file_paths)
+
+        for idx, file_path in enumerate(file_paths, start=1):
+            chunks = ingest_file(file_path, config=config)
+            all_documents.extend(chunks)
+            file_progress = 15.0 + (idx / total_files) * 45.0
+            task_registry.update_task(
+                job_id,
+                stage="chunking",
+                progress_percent=file_progress,
+                stored_chunks=len(all_documents),
+            )
+
+        if not all_documents:
+            task_registry.update_task(
+                job_id,
+                status="failed",
+                stage="failed",
+                error="No extractable text found in uploaded files.",
+            )
+            return
+
+        task_registry.update_task(job_id, stage="embedding", progress_percent=75.0)
+        add_documents(all_documents, config=config)
+
+        task_registry.update_task(
+            job_id,
+            status="completed",
+            stage="completed",
+            progress_percent=100.0,
+            stored_chunks=count_documents(config=config),
+        )
+    except Exception as exc:
+        task_registry.update_task(
+            job_id,
+            status="failed",
+            stage="failed",
+            error=str(exc),
+        )
+
+
+@app.post("/documents/upload", status_code=202)
+async def upload_documents(
+    background_tasks: BackgroundTasks,
+    files: list[UploadFile] = File(...),
+) -> JSONResponse:
     config = load_config()
     if not files:
         raise HTTPException(status_code=400, detail="No files were uploaded.")
@@ -81,7 +134,7 @@ async def upload_documents(files: list[UploadFile] = File(...)) -> dict[str, Any
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     accepted_files: list[str] = []
-    all_documents = []
+    saved_paths: list[Path] = []
 
     for uploaded_file in files:
         filename = uploaded_file.filename or ""
@@ -94,24 +147,35 @@ async def upload_documents(files: list[UploadFile] = File(...)) -> dict[str, Any
             shutil.copyfileobj(uploaded_file.file, target_file)
 
         accepted_files.append(target_path.name)
-        all_documents.extend(ingest_file(target_path, config=config))
+        saved_paths.append(target_path)
 
-    if not all_documents:
+    if not accepted_files:
         raise HTTPException(
             status_code=400,
-            detail="No extractable text found in the uploaded files. Supported formats: PDF, DOCX, TXT.",
+            detail="No supported files found. Supported formats: PDF, DOCX, TXT.",
         )
 
-    add_documents(all_documents, config=config)
-    docs = list_indexed_documents(config=config)
+    task = task_registry.create_task(accepted_files)
+    background_tasks.add_task(execute_ingestion_job, task.job_id, saved_paths, config)
 
-    return {
-        "message": "Documents uploaded and indexed successfully.",
-        "files": accepted_files,
-        "chunks_indexed": len(all_documents),
-        "stored_chunks": count_documents(config=config),
-        "documents": docs,
-    }
+    return JSONResponse(
+        status_code=202,
+        content={
+            "job_id": task.job_id,
+            "status": "queued",
+            "message": "Documents uploaded and ingestion queued.",
+            "files": accepted_files,
+        },
+    )
+
+
+@app.get("/documents/tasks/{job_id}")
+def get_task_status(job_id: str) -> dict[str, Any]:
+    """Poll the status and progress of an asynchronous document ingestion job."""
+    task = task_registry.get_task(job_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task {job_id} not found.")
+    return task.to_dict()
 
 
 @app.post("/documents/sample")

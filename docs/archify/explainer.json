@@ -1,0 +1,170 @@
+{
+  "schema_version": 1,
+  "diagram_type": "explainer",
+  "meta": {
+    "id": "system-migration-explainer",
+    "title": "Local Architecture & Hot-Reload Migration",
+    "output": "explainer.html",
+    "locale": "en",
+    "style": "product",
+    "quality_profile": "standard"
+  },
+  "answer": {
+    "summary": "Migrated AI Knowledge Assistant to **zero-rebuild live reload containers** and **local Gemma 4:e4b inference** on dedicated ports.",
+    "reasons": [
+      "Mounted local code into containers to enable sub-second hot reload without image rebuilds.",
+      "Switched default model to Gemma 4:e4b on Ollama with Metal GPU acceleration.",
+      "Allocated ports 8001 and 5174 to prevent collisions with NewsLens AI containers.",
+      "Persisted ChromaDB vector storage in the host data directory across runs."
+    ],
+    "scope": "Local macOS · Docker Compose v2 · Ollama Gemma 4 · ChromaDB"
+  },
+  "panels": [
+    {
+      "id": "panel-comparison",
+      "title": "Before vs After Migration",
+      "blocks": [
+        {
+          "id": "block-comparison",
+          "type": "comparison",
+          "columns": [
+            "Legacy Full-Rebuild Setup",
+            "Modern Hot-Reload Stack"
+          ],
+          "rows": [
+            {
+              "id": "row-reload",
+              "label": "Code Reload Cycle",
+              "cells": [
+                {
+                  "text": "Full docker rebuild takes two minutes per change",
+                  "assessment": "bad",
+                  "verdict": "High friction"
+                },
+                {
+                  "text": "Vite and Uvicorn reload edits in under 100ms",
+                  "assessment": "good",
+                  "verdict": "Instant feedback"
+                }
+              ]
+            },
+            {
+              "id": "row-inference",
+              "label": "LLM Inference Engine",
+              "cells": [
+                {
+                  "text": "Cloud API calls incur billing and external latency",
+                  "assessment": "caution",
+                  "verdict": "Cloud billing"
+                },
+                {
+                  "text": "Local Gemma 4 runs on Apple Silicon at 38 tok/s",
+                  "assessment": "good",
+                  "verdict": "Private & free"
+                }
+              ]
+            },
+            {
+              "id": "row-ports",
+              "label": "Host Port Footprint",
+              "cells": [
+                {
+                  "text": "Ports 8000 and 5173 collided with other apps",
+                  "assessment": "bad",
+                  "verdict": "Socket crash"
+                },
+                {
+                  "text": "Ports 8001 and 5174 provide dedicated sockets",
+                  "assessment": "good",
+                  "verdict": "Isolated"
+                }
+              ]
+            },
+            {
+              "id": "row-storage",
+              "label": "Vector Persistence",
+              "cells": [
+                {
+                  "text": "Ephemeral container volumes lost state on reset",
+                  "assessment": "caution",
+                  "verdict": "Volatile"
+                },
+                {
+                  "text": "Host mount keeps ChromaDB embeddings intact",
+                  "assessment": "good",
+                  "verdict": "Persistent state"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "panel-steps",
+      "title": "Migration Execution Sequence",
+      "blocks": [
+        {
+          "id": "block-steps",
+          "type": "steps",
+          "items": [
+            {
+              "id": "step-1",
+              "text": "Port Allocation Decoupling",
+              "detail": "Remapped host ports to 8001 and 5174 in compose config."
+            },
+            {
+              "id": "step-2",
+              "text": "Bind Volume Mounts",
+              "detail": "Mounted backend and frontend source directories directly to skip rebuilding."
+            },
+            {
+              "id": "step-3",
+              "text": "Gemma 4:e4b Switch",
+              "detail": "Configured local Ollama runtime and tested model ping."
+            },
+            {
+              "id": "step-4",
+              "text": "Smoke Verification",
+              "detail": "Confirmed document ingestion and retrieval return 200 OK."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "panel-guidance",
+      "title": "Developer Guidance & Runbook",
+      "blocks": [
+        {
+          "id": "block-guidance-list",
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Run docker compose once; source edits reload live in containers.",
+            "Run Ollama natively to use Apple Silicon GPU cores.",
+            "Open the web UI on port 5174 and API docs on port 8001.",
+            "Stored embeddings persist in data/chroma across container runs."
+          ]
+        }
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "id": "docker-compose-spec",
+      "title": "Docker Compose V2 Bind Mount Specification",
+      "url": "https://docs.docker.com/compose/"
+    },
+    {
+      "id": "ollama-model-spec",
+      "title": "Ollama Gemma 4 Local Inference Specification",
+      "url": "https://ollama.com/library/gemma4"
+    },
+    {
+      "id": "fastapi-reload-spec",
+      "title": "FastAPI Uvicorn Development Server Specification",
+      "url": "https://fastapi.tiangolo.com/"
+    }
+  ]
+}

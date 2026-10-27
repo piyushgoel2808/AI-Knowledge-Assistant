@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "AI Knowledge Assistant System Architecture",
+    "output": "architecture.html",
+    "quality_profile": "showcase"
+  },
+  "components": [
+    { "id": "browser", "type": "external", "label": "Client Browser", "sublabel": "React 18 SPA :5174", "pos": [40, 240], "size": [130, 64] },
+    { "id": "nginx_fe", "type": "frontend", "label": "Vite Dev Server", "sublabel": "Node 18 Alpine :5174", "pos": [220, 240], "size": [140, 64], "tag": "HMR Polling" },
+    { "id": "fastapi", "type": "backend", "label": "FastAPI Gateway", "sublabel": "Uvicorn :8001 / :8000", "pos": [410, 240], "size": [150, 64], "tag": "CORS Enabled" },
+    { "id": "ingestion", "type": "backend", "label": "Ingestion Engine", "sublabel": "PyMuPDF + Tesseract", "pos": [610, 160], "size": [150, 64], "tag": "Tables + OCR" },
+    { "id": "rag_engine", "type": "backend", "label": "RAG Orchestrator", "sublabel": "core/rag_engine.py", "pos": [610, 250], "size": [150, 64], "tag": "Strict Grounding" },
+    { "id": "adapter", "type": "backend", "label": "LLM Adapter Layer", "sublabel": "BaseLLMProvider", "pos": [610, 340], "size": [150, 64], "tag": "Session Pool" },
+    { "id": "uploads", "type": "database", "label": "Raw File Store", "sublabel": "data/uploads/", "pos": [410, 40], "size": [140, 60], "tag": "PDF/DOCX/TXT" },
+    { "id": "hf_cache", "type": "database", "label": "HuggingFace Cache", "sublabel": "all-MiniLM-L6-v2", "pos": [610, 40], "size": [140, 60], "tag": "384-dim Embed" },
+    { "id": "chroma", "type": "database", "label": "ChromaDB", "sublabel": "data/chroma : HNSW", "pos": [810, 40], "size": [140, 60], "tag": "Cosine Space" },
+    { "id": "ollama", "type": "cloud", "label": "Ollama Daemon", "sublabel": "gemma4:e4b :11434", "pos": [830, 220], "size": [140, 64], "tag": "Apple Metal GPU" },
+    { "id": "cloud_llm", "type": "cloud", "label": "Cloud Providers", "sublabel": "Gemini / Groq APIs", "pos": [830, 330], "size": [140, 64], "tag": "HTTPS Fallback" }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Docker Compose Stack (ai-knowledge-net)", "wraps": ["nginx_fe", "fastapi", "ingestion", "rag_engine", "adapter"] },
+    { "kind": "region", "label": "Persistent Storage Layer (Host Bind ./data)", "wraps": ["uploads", "hf_cache", "chroma"] },
+    { "kind": "security-group", "label": "Inference Engines (Host Metal & Cloud)", "wraps": ["ollama", "cloud_llm"] }
+  ],
+  "connections": [
+    { "id": "c1", "from": "browser", "to": "nginx_fe", "label": "HTTP :5174", "variant": "emphasis" },
+    { "id": "c2", "from": "nginx_fe", "to": "fastapi", "label": "REST API :8001", "variant": "emphasis" },
+    { "id": "c3", "from": "fastapi", "to": "uploads", "label": "save file", "variant": "default", "fromSide": "top", "toSide": "bottom" },
+    { "id": "c4", "from": "fastapi", "to": "ingestion", "label": "parse", "variant": "default" },
+    { "id": "c5", "from": "ingestion", "to": "hf_cache", "label": "embed text", "variant": "dashed", "fromSide": "top", "toSide": "bottom" },
+    { "id": "c6", "from": "ingestion", "to": "chroma", "label": "upsert chunks", "variant": "default", "fromSide": "right", "toSide": "bottom" },
+    { "id": "c7", "from": "fastapi", "to": "rag_engine", "label": "POST /chat", "variant": "emphasis" },
+    { "id": "c8", "from": "rag_engine", "to": "chroma", "label": "top-k query", "variant": "emphasis", "fromSide": "right", "toSide": "bottom" },
+    { "id": "c9", "from": "rag_engine", "to": "adapter", "label": "prompt", "variant": "default" },
+    { "id": "c10", "from": "adapter", "to": "ollama", "label": "host.docker.internal", "variant": "emphasis" },
+    { "id": "c11", "from": "adapter", "to": "cloud_llm", "label": "HTTPS REST", "variant": "dashed" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Presentation & Gateway",
+      "items": [
+        "React 18 + Vite frontend running on dedicated port 5174",
+        "FastAPI gateway on port 8001 avoiding NewsLens-AI conflicts",
+        "Automatic .env reload and CORS middleware enabled"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "RAG & Vector Core",
+      "items": [
+        "PyMuPDF with automatic table extraction and OCR fallback",
+        "Persistent ChromaDB with cosine similarity distance metric",
+        "Singleton-cached SentenceTransformer (all-MiniLM-L6-v2)"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Inference Acceleration",
+      "items": [
+        "Host bridge to Ollama gemma4:e4b on Apple Metal GPU",
+        "keep_alive=30m keeps model weights warm in Unified Memory",
+        "Fallback adapters for Google Gemini and Groq"
+      ]
+    }
+  ]
+}

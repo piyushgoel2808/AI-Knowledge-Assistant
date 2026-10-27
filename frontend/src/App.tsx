@@ -5,9 +5,13 @@ import {
   clearDocuments,
   deleteDocument,
   getHealth,
+  getTaskStatus,
   loadSampleDocuments,
   uploadDocuments,
   type ChatMessage,
+  type ChatResponse,
+  type ConflictingSource,
+  type Disagreement,
   type HealthStatus,
   type IndexedDocument,
   type Source,
@@ -21,6 +25,9 @@ type ChatItem = ChatMessage & {
   refusal?: boolean
   model?: string
   timestamp?: string
+  standalone_query?: string
+  has_disagreements?: boolean
+  disagreements?: Disagreement[]
 }
 
 const SAMPLE_PROMPTS = [
@@ -95,10 +102,102 @@ export default function App() {
   const [question, setQuestion] = useState('')
   const [topK, setTopK] = useState<number>(5)
   const [busy, setBusy] = useState(false)
+  const [uploadTask, setUploadTask] = useState<{
+    jobId: string
+    percent: number
+    stage: string
+  } | null>(null)
   const [toast, setToast] = useState<{ text: string; type: 'info' | 'error' | 'success' } | null>(
     null,
   )
+  const [isListening, setIsListening] = useState(false)
+  const [speakingIndex, setSpeakingIndex] = useState<number | null>(null)
   const chatEndRef = useRef<HTMLDivElement | null>(null)
+  const recognitionRef = useRef<any>(null)
+
+  function toggleSpeechRecognition() {
+    const SpeechRecognitionClass =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognitionClass) {
+      setToast({
+        text: 'Speech recognition is not supported in this browser.',
+        type: 'info',
+      })
+      return
+    }
+
+    if (isListening) {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop()
+      }
+      setIsListening(false)
+      return
+    }
+
+    try {
+      const recognition = new SpeechRecognitionClass()
+      recognition.continuous = false
+      recognition.interimResults = false
+      recognition.lang = 'en-US'
+
+      recognition.onstart = () => {
+        setIsListening(true)
+      }
+
+      recognition.onresult = (event: any) => {
+        const transcript = event.results?.[0]?.[0]?.transcript
+        if (transcript) {
+          setQuestion((prev) => (prev ? `${prev} ${transcript}` : transcript))
+        }
+      }
+
+      recognition.onerror = () => {
+        setIsListening(false)
+      }
+
+      recognition.onend = () => {
+        setIsListening(false)
+      }
+
+      recognitionRef.current = recognition
+      recognition.start()
+    } catch {
+      setIsListening(false)
+      setToast({
+        text: 'Could not access microphone.',
+        type: 'error',
+      })
+    }
+  }
+
+  function toggleSpeak(index: number, text: string) {
+    if (!('speechSynthesis' in window)) {
+      setToast({
+        text: 'Text-to-speech is not supported in this browser.',
+        type: 'info',
+      })
+      return
+    }
+
+    if (speakingIndex === index) {
+      window.speechSynthesis.cancel()
+      setSpeakingIndex(null)
+      return
+    }
+
+    window.speechSynthesis.cancel()
+    const cleanText = text
+      .replace(/\[S?\d+(?:,\s*S?\d+)*\]/g, '')
+      .replace(/\*\*/g, '')
+      .replace(/^[-*•]\s+/gm, '')
+      .trim()
+
+    const utterance = new SpeechSynthesisUtterance(cleanText)
+    utterance.onend = () => setSpeakingIndex(null)
+    utterance.onerror = () => setSpeakingIndex(null)
+    setSpeakingIndex(index)
+    window.speechSynthesis.speak(utterance)
+  }
 
   async function refreshHealth() {
     try {
@@ -138,14 +237,33 @@ export default function App() {
     setBusy(true)
     setToast(null)
     try {
-      const result = await uploadDocuments(files)
+      const initRes = await uploadDocuments(files)
       setFiles([])
-      await refreshHealth()
-      setToast({
-        text: `${result.message} (${result.chunks_indexed} chunks indexed from ${result.files.length} file(s)).`,
-        type: 'success',
-      })
-      setView('workspace')
+      setUploadTask({ jobId: initRes.job_id, percent: 5, stage: 'Queued for processing...' })
+
+      let finished = false
+      while (!finished) {
+        await new Promise((r) => setTimeout(r, 400))
+        const task = await getTaskStatus(initRes.job_id)
+        setUploadTask({
+          jobId: task.job_id,
+          percent: task.progress_percent,
+          stage: `Stage: ${task.stage.toUpperCase()} (${task.progress_percent}%)`,
+        })
+
+        if (task.status === 'completed') {
+          finished = true
+          await refreshHealth()
+          setToast({
+            text: `Documents processed and indexed successfully (${task.stored_chunks ?? 0} total chunks).`,
+            type: 'success',
+          })
+          setView('workspace')
+        } else if (task.status === 'failed') {
+          finished = true
+          throw new Error(task.error || 'Document ingestion failed')
+        }
+      }
     } catch (error: unknown) {
       setToast({
         text: error instanceof Error ? error.message : 'Upload failed',
@@ -153,6 +271,7 @@ export default function App() {
       })
     } finally {
       setBusy(false)
+      setUploadTask(null)
     }
   }
 
@@ -249,6 +368,9 @@ export default function App() {
           refusal: result.refusal,
           model: result.model || activeModel,
           timestamp: replyTime,
+          standalone_query: result.standalone_query,
+          has_disagreements: result.has_disagreements,
+          disagreements: result.disagreements,
         },
       ])
       if (result.refusal) {
@@ -522,8 +644,19 @@ export default function App() {
 
               <div className="button-stack">
                 <button className="btn-primary full-width" onClick={handleUpload} disabled={busy}>
-                  {busy ? 'Processing...' : 'Upload & Index Files'}
+                  {busy ? (uploadTask ? 'Processing Ingestion...' : 'Uploading...') : 'Upload & Index Files'}
                 </button>
+                {uploadTask && (
+                  <div style={{ marginTop: '10px', padding: '10px 12px', background: '#0f172a', borderRadius: '8px', border: '1px solid #1e293b' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', color: '#94a3b8', marginBottom: '6px' }}>
+                      <span style={{ fontWeight: 500 }}>{uploadTask.stage}</span>
+                      <span style={{ fontWeight: 600, color: '#38bdf8' }}>{uploadTask.percent}%</span>
+                    </div>
+                    <div style={{ height: '6px', background: '#1e293b', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ width: `${uploadTask.percent}%`, height: '100%', background: 'linear-gradient(90deg, #38bdf8, #818cf8)', transition: 'width 0.3s ease' }} />
+                    </div>
+                  </div>
+                )}
                 <div className="button-row-split">
                   <button
                     className="btn-secondary"
@@ -670,6 +803,15 @@ export default function App() {
                         {item.role === 'user' ? 'You' : `Assistant (${item.model || activeModel})`}
                       </span>
                       <div className="bubble-badges">
+                        {item.role === 'assistant' && (
+                          <button
+                            className={`btn-speak ${speakingIndex === index ? 'speaking' : ''}`}
+                            title={speakingIndex === index ? 'Stop audio' : 'Read answer aloud'}
+                            onClick={() => toggleSpeak(index, item.content)}
+                          >
+                            {speakingIndex === index ? '⏹ Stop' : '🔊 Listen'}
+                          </button>
+                        )}
                         {item.role === 'assistant' && item.confidence && (
                           <span className={`confidence-badge ${item.confidence}`}>
                             {item.refusal
@@ -682,6 +824,32 @@ export default function App() {
                     </div>
 
                     <div className="bubble-body">
+                      {item.role === 'assistant' && item.standalone_query && (
+                        <div className="standalone-query-pill">
+                          <span>🔍 Standalone Retrieval Query:</span>
+                          <em>&ldquo;{item.standalone_query}&rdquo;</em>
+                        </div>
+                      )}
+                      {item.role === 'assistant' && item.has_disagreements && item.disagreements && (
+                        <div className="disagreement-box">
+                          <div className="disagreement-header">
+                            <span>⚠️</span>
+                            <span>Multi-Document Discrepancy Detected</span>
+                          </div>
+                          {item.disagreements.map((d, dIdx) => (
+                            <div key={dIdx}>
+                              <p className="disagreement-summary">{d.summary}</p>
+                              <div className="disagreement-sources">
+                                {d.conflicting_sources.map((cs, csIdx) => (
+                                  <div key={csIdx}>
+                                    <strong>{cs.source}</strong> (Page {cs.page ?? 'n/a'}): &ldquo;{cs.statement}&rdquo;
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       {item.role === 'assistant' ? (
                         renderFormattedAnswer(item.content)
                       ) : (
@@ -706,11 +874,25 @@ export default function App() {
                                   <strong>{src.source}</strong>
                                 </div>
                                 <div className="source-meta-pills">
+                                  {src.verified != null && (
+                                    <span
+                                      className={`meta-pill ${
+                                        src.verified ? 'verified-pill' : 'unverified-pill'
+                                      }`}
+                                    >
+                                      {src.verified ? '✓ Verified' : '⚠️ Unverified'}
+                                    </span>
+                                  )}
                                   {src.page != null && (
                                     <span className="meta-pill">Page {src.page}</span>
                                   )}
                                   {src.section && (
                                     <span className="meta-pill">{src.section}</span>
+                                  )}
+                                  {src.rerank_score != null && (
+                                    <span className="meta-pill rerank-pill">
+                                      Rerank {Math.round(src.rerank_score * 100)}%
+                                    </span>
                                   )}
                                   {src.similarity != null && (
                                     <span className="meta-pill match-pill">
@@ -764,13 +946,25 @@ export default function App() {
                 <span className="composer-hint">
                   Strict Grounding Mode · Model: <code>{activeModel}</code> · Top-{topK} chunks
                 </span>
-                <button
-                  className="btn-primary"
-                  onClick={() => submitQuestion(question)}
-                  disabled={busy || !question.trim()}
-                >
-                  {busy ? 'Generating...' : 'Send Question →'}
-                </button>
+                <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+                  <button
+                    type="button"
+                    className={`btn-voice ${isListening ? 'listening' : ''}`}
+                    onClick={toggleSpeechRecognition}
+                    disabled={busy}
+                    title={isListening ? 'Stop listening' : 'Start voice input (Speech to Text)'}
+                  >
+                    <span>🎙️</span>
+                    <span>{isListening ? 'Listening...' : 'Voice'}</span>
+                  </button>
+                  <button
+                    className="btn-primary"
+                    onClick={() => submitQuestion(question)}
+                    disabled={busy || !question.trim()}
+                  >
+                    {busy ? 'Generating...' : 'Send Question →'}
+                  </button>
+                </div>
               </div>
             </div>
           </main>

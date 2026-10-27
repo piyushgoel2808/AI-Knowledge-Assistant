@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "9db16bf5-ab4d-495f-be63-c5eee498226e",
+  "status": "current",
+  "command": "deliver",
+  "type": "waterfall",
+  "input": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/waterfall.json",
+  "output": "/Users/piyushgoel/Downloads/Projects/AI-Knowledge-Assistant/docs/archify/waterfall.html",
+  "specification": {
+    "sha256": "82801dc421824685f7dd7b80de8323298f79f76edfc6136ad527325141a8aee8",
+    "bytes": 4314
+  },
+  "artifact": {
+    "sha256": "e94e6e7d5a7613cae615fe89116f921474a5512dc0c031b51e0f394b52a381af",
+    "bytes": 845053
+  }
+}
