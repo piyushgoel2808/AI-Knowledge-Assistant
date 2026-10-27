@@ -20,7 +20,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.15 /uv /uvx /bin/
 # Install Python dependencies first — cached unless requirements.txt changes
 COPY requirements.txt .
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system -r requirements.txt
+    uv pip install --system --index-strategy unsafe-best-match -r requirements.txt
 
 # Copy fallback application code (overridden in dev by live bind-mounts in docker-compose.yml)
 COPY backend/ ./backend/

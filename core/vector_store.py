@@ -304,22 +304,52 @@ def delete_document(
         return 0
     collection.delete(where={"source": source_name})
     after = collection.count()
+
+    try:
+        ParentDocStore().delete_by_source(source_name)
+    except Exception:
+        pass
+
+    try:
+        all_records = collection.get(include=["documents", "metadatas"])
+        if all_records and all_records.get("ids"):
+            corpus = [
+                {"id": doc_id, "content": doc_text, "metadata": doc_meta}
+                for doc_id, doc_text, doc_meta in zip(
+                    all_records["ids"],
+                    all_records.get("documents") or [],
+                    all_records.get("metadatas") or [],
+                )
+            ]
+            bm25_index.build(corpus)
+        else:
+            bm25_index.clear()
+    except Exception:
+        pass
+
     return max(0, before - after)
 
 
 def clear_collection(collection_name: str = DEFAULT_COLLECTION_NAME, config: AppConfig | None = None) -> None:
-    """Delete the collection and recreate it empty."""
+    """Safely delete all chunks and clear docstore & BM25 without dropping collection handles."""
 
-    client = get_client(config)
     try:
-        client.delete_collection(name=collection_name)
+        collection = get_collection(collection_name=collection_name, config=config)
+        all_records = collection.get()
+        if all_records and all_records.get("ids"):
+            collection.delete(ids=all_records["ids"])
     except Exception:
         pass
-    client.get_or_create_collection(
-        name=collection_name,
-        embedding_function=_get_embedding_function(),
-        metadata={"hnsw:space": "cosine"},
-    )
+
+    try:
+        ParentDocStore().clear()
+    except Exception:
+        pass
+
+    try:
+        bm25_index.clear()
+    except Exception:
+        pass
 
 
 def _build_chunk_id(document: Document, index: int) -> str:

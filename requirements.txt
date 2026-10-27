@@ -17,3 +17,4 @@ python-multipart>=0.0.9
 pytesseract
 pymupdf4llm
 groq
+rank-bm25>=0.2.2
